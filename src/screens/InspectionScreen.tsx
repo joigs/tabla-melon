@@ -3,12 +3,15 @@ import { View, Text, ScrollView, StyleSheet, useWindowDimensions, Keyboard, Text
 import { RouteProp, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
 import { TabView, TabBar } from 'react-native-tab-view';
-import InlineBanner from '../components/InlineBanner';
 import ItemRow from '../components/ItemRow';
 import { getInspeccion, listPuntosByInspeccion } from '../db';
 
 type R = RouteProp<RootStackParamList, 'Inspection'>;
-type PointKey = string; // `${manto}-${medicion}-${punto}`
+type PointKey = string;
+
+function isFilled(v: string | undefined) {
+    return (v ?? '').trim() !== '';
+}
 
 export default function InspectionScreen() {
     const route = useRoute<R>();
@@ -43,11 +46,25 @@ export default function InspectionScreen() {
     );
     const [index, setIndex] = useState(0);
 
+    const completedByTabKey = useMemo(() => {
+        const out: Record<string, boolean> = {};
+        for (let m = 1; m <= 4; m++) {
+            let filled = 0;
+            for (let med = 1; med <= 3; med++) {
+                for (let p = 1; p <= 4; p++) {
+                    const k = `${m}-${med}-${p}`;
+                    if (isFilled(map[k])) filled += 1;
+                }
+            }
+            out[`m${m}`] = filled === 12;
+        }
+        return out;
+    }, [map]);
+
     const renderScene = ({ route: r }: any) => {
         const manto: 1 | 2 | 3 | 4 =
             r.key === 'm1' ? 1 : r.key === 'm2' ? 2 : r.key === 'm3' ? 3 : 4;
 
-        // refs para “next”
         const refs: Array<TextInput | null> = [];
         const setRef = (i: number) => (ref: TextInput | null) => {
             refs[i] = ref;
@@ -80,12 +97,7 @@ export default function InspectionScreen() {
 
         return (
             <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 }}>
-                <InlineBanner
-                    banner={{
-                        message:
-                            'Regla: mínimo 4 mediciones por manto (puntos 1–4) con separación mínima de 10 cm. Se realizan 3 mediciones (12 puntos por manto).',
-                    }}
-                />
+
                 <Text style={styles.header}>{inspeccionNombre}</Text>
 
                 {[1, 2, 3].map(med => (
@@ -116,6 +128,19 @@ export default function InspectionScreen() {
                         style={{ backgroundColor: 'white' }}
                         inactiveColor="#666"
                         activeColor="black"
+                        renderLabel={({ route: rr, focused, color }: any) => {
+                            const complete = !!completedByTabKey[rr.key];
+                            return (
+                                <Text
+                                    style={{
+                                        color: complete ? 'green' : color,
+                                        fontWeight: focused ? '700' : '600',
+                                    }}
+                                >
+                                    {rr.title}
+                                </Text>
+                            );
+                        }}
                     />
                 )}
             />

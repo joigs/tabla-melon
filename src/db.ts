@@ -30,9 +30,19 @@ export async function initDb() {
             FOREIGN KEY(inspeccion_id) REFERENCES inspecciones(id) ON DELETE CASCADE
             );
     `);
+
+    await db.execAsync(`ALTER TABLE inspecciones ADD COLUMN export_count INTEGER NOT NULL DEFAULT 0;`).catch(() => {});
+    await db.execAsync(`ALTER TABLE inspecciones ADD COLUMN last_image_uri TEXT;`).catch(() => {});
 }
 
-export type InspeccionRow = { id: number; numero: number; nombre: string };
+export type InspeccionRow = {
+    id: number;
+    numero: number;
+    nombre: string;
+    export_count?: number;
+    last_image_uri?: string | null;
+};
+
 export type PuntoRow = {
     id: number;
     inspeccion_id: number;
@@ -81,7 +91,7 @@ async function ensure48Puntos(db: SQLite.SQLiteDatabase, inspeccionId: number) {
             for (let p = 1; p <= 4; p++) {
                 await db.runAsync(
                     `INSERT OR IGNORE INTO puntos (inspeccion_id, manto, medicion, punto, valor_texto)
-           VALUES (?, ?, ?, ?, ?);`,
+                     VALUES (?, ?, ?, ?, ?);`,
                     inspeccionId, m, med, p, ''
                 );
             }
@@ -93,8 +103,8 @@ export async function listPuntosByInspeccion(inspeccionId: number): Promise<Punt
     const db = await getDb();
     return db.getAllAsync<PuntoRow>(
         `SELECT * FROM puntos
-     WHERE inspeccion_id = ?
-     ORDER BY manto, medicion, punto;`,
+         WHERE inspeccion_id = ?
+         ORDER BY manto, medicion, punto;`,
         inspeccionId
     );
 }
@@ -115,7 +125,6 @@ export async function setValorPunto(opts: {
     );
 }
 
-
 export const TOTAL_PUNTOS = 48;
 
 export type InspeccionConProgreso = InspeccionRow & { completados: number };
@@ -127,6 +136,8 @@ export async function listInspeccionesConProgreso(): Promise<InspeccionConProgre
             i.id,
             i.numero,
             i.nombre,
+            COALESCE(i.export_count, 0) AS export_count,
+            i.last_image_uri AS last_image_uri,
             COALESCE(
                     SUM(
                             CASE
@@ -138,7 +149,30 @@ export async function listInspeccionesConProgreso(): Promise<InspeccionConProgre
             ) AS completados
         FROM inspecciones i
                  LEFT JOIN puntos p ON p.inspeccion_id = i.id
-        GROUP BY i.id
+        GROUP BY i.id, i.numero, i.nombre, i.export_count, i.last_image_uri
         ORDER BY i.numero DESC;
     `);
+}
+
+export type PointsMap = Record<string, string>;
+
+export async function getPointsMapByInspeccion(inspeccionId: number): Promise<PointsMap> {
+    const puntos = await listPuntosByInspeccion(inspeccionId);
+    const out: PointsMap = {};
+    for (const p of puntos) out[`${p.manto}-${p.medicion}-${p.punto}`] = p.valor_texto ?? '';
+    return out;
+}
+
+export async function setExportMeta(opts: {
+    inspeccionId: number;
+    nextExportCount: number;
+    lastImageUri: string;
+}) {
+    const db = await getDb();
+    await db.runAsync(
+        `UPDATE inspecciones
+         SET export_count = ?, last_image_uri = ?
+         WHERE id = ?;`,
+        opts.nextExportCount, opts.lastImageUri, opts.inspeccionId
+    );
 }
