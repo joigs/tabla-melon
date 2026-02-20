@@ -8,12 +8,12 @@ type Props = {
     medicion: 1 | 2 | 3;
     punto: 1 | 2 | 3 | 4;
 
-    value: string; // controlado por el padre (map)
+    value: string;
     onValueChange: (next: string) => void;
 
     inputRef?: (ref: TextInput | null) => void;
-    onSubmitNext?: () => void; // foco al siguiente
-    isLast?: boolean;          // si es el último del manto => cerrar teclado
+    onSubmitNext?: () => void;
+    isLast?: boolean;
 };
 
 function normalizeForStore(ui: string): string {
@@ -26,54 +26,47 @@ function normalizeForStore(ui: string): string {
     return `${a},${frac}`;
 }
 
+
 function applyRules(prev: string, raw: string): string {
-    // 1) normalizar separador y filtrar caracteres
-    let s = raw.replace(/\./g, ',').replace(/[^\d,]/g, '');
+    if (raw === '') return '';
 
-    // permitir comenzar con coma => "0,"
-    if (s.startsWith(',')) s = '0' + s;
+    if (/[^0-9,\.]/.test(raw)) return prev;
 
-    // 2) solo una coma
-    const firstComma = s.indexOf(',');
-    if (firstComma !== -1) {
-        s = s.slice(0, firstComma + 1) + s.slice(firstComma + 1).replace(/,/g, '');
-    }
+    let s = raw.replace(/\./g, ',');
 
-    // 3) límite de largo según primer carácter
+    if (s.startsWith(',')) return prev;
+
+    const commas = (s.match(/,/g) || []).length;
+    if (commas > 1) return prev;
+
     const maxLen = s.startsWith('1') ? 4 : 3;
     if (s.length > maxLen) s = s.slice(0, maxLen);
 
     if (s === '') return '';
 
-    // 4) separar entero/decimal
     const hasComma = s.includes(',');
-    const parts = s.split(',');
-    let intStr = parts[0] ?? '';
-    let fracStr = parts[1] ?? '';
+    const [intRaw = '', fracRaw = ''] = s.split(',');
 
-    // limpiar ceros a la izquierda (solo en entero)
+    if (!intRaw) return prev;
+
+    let intStr = intRaw;
     if (intStr.length > 1) {
         const n = parseInt(intStr, 10);
         if (!Number.isFinite(n)) return prev;
         intStr = String(n);
     }
 
-    // validar entero 0..10
     const intVal = Number(intStr);
     if (!Number.isFinite(intVal) || intVal < 0 || intVal > 10) return prev;
 
-    // decimal: máximo 1 dígito
+    let fracStr = fracRaw;
     if (fracStr.length > 1) fracStr = fracStr.slice(0, 1);
 
-    // si es 10, el decimal solo puede ser 0 (o vacío mientras escribe)
-    if (intVal === 10 && fracStr.length > 0 && fracStr !== '0') {
-        fracStr = '0';
-    }
+    if (intVal === 10 && fracStr.length > 0 && fracStr !== '0') return prev;
 
     let out = intStr;
     if (hasComma) out = `${intStr},${fracStr}`;
 
-    // re-aplicar maxLen por si cambió el entero tras quitar ceros
     const maxLen2 = out.startsWith('1') ? 4 : 3;
     if (out.length > maxLen2) out = out.slice(0, maxLen2);
 
@@ -137,7 +130,8 @@ export default function ItemRow({
                     ref={inputRef}
                     value={value}
                     placeholder="0 a 10"
-                    keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
+                    // mejor para decimales también en Android; igual bloqueamos por reglas
+                    keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'decimal-pad'}
                     inputMode="decimal"
                     returnKeyType={isLast ? 'done' : 'next'}
                     blurOnSubmit={isLast}

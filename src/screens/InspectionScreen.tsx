@@ -1,5 +1,15 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, useWindowDimensions, Keyboard, TextInput } from 'react-native';
+import {
+    View,
+    Text,
+    ScrollView,
+    StyleSheet,
+    useWindowDimensions,
+    Keyboard,
+    TextInput,
+    KeyboardAvoidingView,
+    Platform,
+} from 'react-native';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
 import { TabView, TabBar } from 'react-native-tab-view';
@@ -19,6 +29,19 @@ export default function InspectionScreen() {
 
     const [inspeccionNombre, setInspeccionNombre] = useState<string>('');
     const [map, setMap] = useState<Record<PointKey, string>>({});
+
+    const [kbHeight, setKbHeight] = useState(0);
+
+    useEffect(() => {
+        const show = Keyboard.addListener('keyboardDidShow', e => {
+            setKbHeight(e.endCoordinates?.height ?? 0);
+        });
+        const hide = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
+        return () => {
+            show.remove();
+            hide.remove();
+        };
+    }, []);
 
     useEffect(() => {
         const load = async () => {
@@ -96,20 +119,28 @@ export default function InspectionScreen() {
         let idx = 0;
 
         return (
-            <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 }}>
+            <KeyboardAvoidingView
+                style={{ flex: 1 }}
+                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                keyboardVerticalOffset={0}
+            >
+                <ScrollView
+                    keyboardShouldPersistTaps="handled"
+                    contentContainerStyle={{ padding: 12, paddingBottom: 24 + kbHeight }}
+                >
+                    <Text style={styles.header}>{inspeccionNombre}</Text>
 
-                <Text style={styles.header}>{inspeccionNombre}</Text>
-
-                {[1, 2, 3].map(med => (
-                    <View key={med} style={styles.block}>
-                        <Text style={styles.blockTitle}>Medición {med}</Text>
-                        {Row(med as 1 | 2 | 3, 1, idx++)}
-                        {Row(med as 1 | 2 | 3, 2, idx++)}
-                        {Row(med as 1 | 2 | 3, 3, idx++)}
-                        {Row(med as 1 | 2 | 3, 4, idx++)}
-                    </View>
-                ))}
-            </ScrollView>
+                    {[1, 2, 3].map(med => (
+                        <View key={med} style={styles.block}>
+                            <Text style={styles.blockTitle}>Medición {med}</Text>
+                            {Row(med as 1 | 2 | 3, 1, idx++)}
+                            {Row(med as 1 | 2 | 3, 2, idx++)}
+                            {Row(med as 1 | 2 | 3, 3, idx++)}
+                            {Row(med as 1 | 2 | 3, 4, idx++)}
+                        </View>
+                    ))}
+                </ScrollView>
+            </KeyboardAvoidingView>
         );
     };
 
@@ -126,14 +157,13 @@ export default function InspectionScreen() {
                         scrollEnabled
                         indicatorStyle={{ backgroundColor: 'black' }}
                         style={{ backgroundColor: 'white' }}
-                        inactiveColor="#666"
-                        activeColor="black"
-                        renderLabel={({ route: rr, focused, color }: any) => {
+                        renderLabel={({ route: rr, focused }: any) => {
                             const complete = !!completedByTabKey[rr.key];
+                            const base = focused ? '#111' : '#666';
                             return (
                                 <Text
                                     style={{
-                                        color: complete ? 'green' : color,
+                                        color: complete ? 'green' : base,
                                         fontWeight: focused ? '700' : '600',
                                     }}
                                 >

@@ -83,24 +83,30 @@ async function addToAlbum(asset: MediaLibrary.Asset) {
     }
 }
 
-async function openImageExternally(uri: string) {
-    try {
-        if (Platform.OS === 'android') {
-            try {
-                // eslint-disable-next-line @typescript-eslint/no-var-requires
-                const IntentLauncher = require('expo-intent-launcher');
-                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-                    data: uri,
-                    flags: 1,
-                    type: 'image/*',
-                });
-                return;
-            } catch {
-                // fallback
-            }
+async function openImageExternallySafe(fileUri: string) {
+    let uriToOpen = fileUri;
+
+    if (Platform.OS === 'android' && uriToOpen.startsWith('file://')) {
+        const fn = (FileSystem as any).getContentUriAsync;
+        if (typeof fn === 'function') {
+            uriToOpen = await fn(uriToOpen);
         }
-        await Linking.openURL(uri);
-    } catch {}
+    }
+
+    if (Platform.OS === 'android') {
+        try {
+            const IntentLauncher = require('expo-intent-launcher');
+            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+                data: uriToOpen,
+                flags: 1,
+                type: 'image/*',
+            });
+            return;
+        } catch {
+        }
+    }
+
+    await Linking.openURL(uriToOpen);
 }
 
 function CaptureModal({
@@ -133,8 +139,14 @@ function CaptureModal({
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={() => onDone(null)}>
             <View style={styles.captureBackdrop}>
-                <ViewShot ref={ref} style={styles.captureBox}>
-                    {points ? <MeasurementTableShot points={points} /> : null}
+                <ViewShot
+                    ref={ref}
+                    options={{ format: 'png', quality: 1, result: 'tmpfile' }}
+                    style={styles.captureBox}
+                >
+                    <View style={{ transform: [{ scale: 2 }], alignSelf: 'flex-start' }}>
+                        {points ? <MeasurementTableShot points={points} /> : null}
+                    </View>
                 </ViewShot>
             </View>
         </Modal>
@@ -155,11 +167,8 @@ export default function ProjectListScreen() {
     const qNorm = useMemo(() => normalizeSearch(query), [query]);
 
     const filteredRows = useMemo(() => {
-        if (!qNorm) return rows; // ya vienen en DESC por numero desde la query SQL
-        return rows.filter(r => {
-            const hay = normalizeSearch(`${r.numero} ${r.nombre}`);
-            return hay.includes(qNorm);
-        });
+        if (!qNorm) return rows;
+        return rows.filter(r => normalizeSearch(`${r.numero} ${r.nombre}`).includes(qNorm));
     }, [rows, qNorm]);
 
     const [capVisible, setCapVisible] = useState(false);
@@ -271,6 +280,7 @@ export default function ProjectListScreen() {
                 points,
             });
 
+            // Imagen (tabla)
             const shotTmp = await captureTable(points);
             if (!shotTmp) {
                 niceAlert('Error', 'No se pudo generar la imagen.');
@@ -297,7 +307,7 @@ export default function ProjectListScreen() {
             await setExportMeta({
                 inspeccionId: item.id,
                 nextExportCount: nextCount,
-                lastImageUri: asset.uri,
+                lastImageUri: finalUri,
             });
 
             await load();
@@ -310,57 +320,77 @@ export default function ProjectListScreen() {
         }
     };
 
+    const openLastImage = async (uri: string) => {
+        try {
+            await openImageExternallySafe(uri);
+        } catch {
+            niceAlert('Error', 'No se pudo abrir la última imagen.');
+        }
+    };
+
     const renderItem = ({ item }: { item: Row }) => {
         const busy = !!exporting[item.id];
-        const canExport = item.completados >= TOTAL_PUNTOS;
+        const canGenerate = item.completados >= TOTAL_PUNTOS;
 
         return (
-            <TouchableOpacity
-                style={styles.card}
-                onPress={() => nav.navigate('Inspection', { inspeccionId: item.id })}
-            >
-                <View style={{ flex: 1 }}>
+            <View style={styles.card}>
+                <View style={{ flex: 1, paddingRight: 10 }}>
                     <Text style={styles.title}>
                         {item.numero} - {item.nombre}
                     </Text>
                     <Text style={styles.meta}>
                         Progreso: {item.completados} / {TOTAL_PUNTOS}
                     </Text>
+
+                    <View style={styles.leftActionsRow}>
+                        <PillButton
+                            title={busy ? 'Generando…' : 'Generar imagen'}
+                            onPress={() => handleExport(item)}
+                            disabled={!canGenerate || busy}
+                            size="sm"
+                        />
+                        {item.last_image_uri ? (
+                            <PillButton
+                                title="Abrir última imagen"
+                                variant="outline"
+                                onPress={() => openLastImage(item.last_image_uri as string)}
+                                disabled={busy}
+                                size="sm"
+                            />
+                        ) : null}
+                    </View>
                 </View>
 
-                <View style={{ gap: 6 }}>
+                <View style={styles.rightActions}>
                     <PillButton
                         title="Abrir"
                         onPress={() => nav.navigate('Inspection', { inspeccionId: item.id })}
                         disabled={busy}
+                        size="sm"
                     />
-
                     <PillButton
-                        title={busy ? 'Generando…' : 'Imagen'}
-                        onPress={() => handleExport(item)}
-                        disabled={!canExport || busy}
+                        title="Editar"
+                        variant="outline"
+                        onPress={() => openEdit(item)}
+                        disabled={busy}
+                        size="sm"
                     />
-
-                    {item.last_image_uri ? (
-                        <PillButton
-                            title="Abrir última imagen"
-                            variant="outline"
-                            onPress={() => openImageExternally(item.last_image_uri as string)}
-                            disabled={busy}
-                        />
-                    ) : null}
-
-                    <PillButton title="Editar" variant="outline" onPress={() => openEdit(item)} disabled={busy} />
-                    <PillButton title="Eliminar" variant="danger" onPress={() => remove(item)} disabled={busy} />
+                    <PillButton
+                        title="Eliminar"
+                        variant="danger"
+                        onPress={() => remove(item)}
+                        disabled={busy}
+                        size="sm"
+                    />
                 </View>
-            </TouchableOpacity>
+            </View>
         );
     };
 
     return (
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
             <View style={{ flex: 1 }}>
-                {/* barra de búsqueda */}
+                {/* búsqueda */}
                 <View style={styles.searchWrap}>
                     <Text style={styles.searchIcon}>🔎</Text>
                     <TextInput
@@ -375,11 +405,7 @@ export default function ProjectListScreen() {
                         style={styles.searchInput}
                     />
                     {!!query.trim() && (
-                        <TouchableOpacity
-                            onPress={() => setQuery('')}
-                            style={styles.clearBtn}
-                            accessibilityRole="button"
-                        >
+                        <TouchableOpacity onPress={() => setQuery('')} style={styles.clearBtn}>
                             <Text style={styles.clearText}>✕</Text>
                         </TouchableOpacity>
                     )}
@@ -447,12 +473,7 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
     },
     searchIcon: { marginRight: 8, fontSize: 14 },
-    searchInput: {
-        flex: 1,
-        fontSize: 14,
-        color: '#111',
-        paddingVertical: 0,
-    },
+    searchInput: { flex: 1, fontSize: 14, color: '#111', paddingVertical: 0 },
     clearBtn: {
         marginLeft: 8,
         width: 28,
@@ -463,22 +484,31 @@ const styles = StyleSheet.create({
         backgroundColor: '#E4E7EC',
     },
     clearText: { fontSize: 14, fontWeight: '800', color: '#344054' },
-    searchMeta: {
-        marginHorizontal: 12,
-        marginBottom: 6,
-        color: '#667085',
-        fontSize: 12,
-    },
+    searchMeta: { marginHorizontal: 12, marginBottom: 6, color: '#667085', fontSize: 12 },
 
     card: {
         flexDirection: 'row',
         padding: 12,
         borderBottomWidth: 1,
         borderColor: '#ddd',
-        alignItems: 'center',
+        alignItems: 'flex-start',
     },
     title: { fontSize: 16, fontWeight: '600' },
     meta: { fontSize: 12, color: '#666', marginTop: 4 },
+
+    leftActionsRow: {
+        flexDirection: 'row',
+        flexWrap: 'wrap',
+        gap: 8,
+        marginTop: 10,
+        alignItems: 'center',
+    },
+
+    rightActions: {
+        gap: 6,
+        alignItems: 'flex-end',
+    },
+
     formLabel: { fontWeight: '600' },
     input: { borderWidth: 1, borderColor: '#aaa', borderRadius: 6, padding: 10 },
     footer: {
@@ -487,6 +517,7 @@ const styles = StyleSheet.create({
         borderColor: '#ddd',
         backgroundColor: 'white',
     },
+
     captureBackdrop: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.15)',

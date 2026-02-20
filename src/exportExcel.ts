@@ -23,9 +23,7 @@ async function ensureDir(path: string) {
 function parseValorToNumber(raw: unknown): number | null {
     const s = String(raw ?? '').trim();
     if (!s) return null;
-
     const normalized = s.replace(',', '.');
-
     const n = Number(normalized);
     if (!Number.isFinite(n)) return null;
     return n;
@@ -33,6 +31,11 @@ function parseValorToNumber(raw: unknown): number | null {
 
 const GREEN = 'FF00B050';
 const RED = 'FFFF0000';
+
+const headerStyle = {
+    font: { bold: true },
+    alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+} as any;
 
 export async function writeInspeccionExcel(opts: {
     numero: number;
@@ -49,7 +52,6 @@ export async function writeInspeccionExcel(opts: {
     const filename = `${opts.numero}-${slugify(opts.nombre)}.xlsx`;
     const uri = `${excelDir}/${filename}`;
 
-    // B2..N7
     const row2 = [
         '', '1° Medición', '', '', '',
         '2° Medición', '', '', '',
@@ -90,18 +92,43 @@ export async function writeInspeccionExcel(opts: {
         { s: { r: 1, c: 10 }, e: { r: 1, c: 13 } }, // K2:N2
     ];
 
+    // Columnas más anchas para que no se corte "X° punto"
     ws['!cols'] = [
-        { wch: 12 }, // B
-        ...Array.from({ length: 12 }).map(() => ({ wch: 10 })),
+        { wch: 14 }, // B
+        ...Array.from({ length: 12 }).map(() => ({ wch: 16 })), // C..N
     ];
 
+    // Altura de filas (B2..N7 => filas 2..7)
+    ws['!rows'] = [
+        {}, // fila 1
+        { hpt: 22 }, // fila 2 (B2..N2)
+        { hpt: 26 }, // fila 3 (B3..N3)
+        { hpt: 20 },
+        { hpt: 20 },
+        { hpt: 20 },
+        { hpt: 20 },
+    ];
 
-    for (let i = 2; i <= 5; i++) {
-        for (let j = 1; j <= 12; j++) {
-            const r = 1 + i;
+    // Estilos header (B2..N3)
+    const styleCell = (r: number, c: number, s: any) => {
+        const addr = XLSX.utils.encode_cell({ r, c });
+        if (!ws[addr]) ws[addr] = { t: 's', v: '' };
+        ws[addr].s = { ...(ws[addr].s || {}), ...s };
+    };
+
+    // r/c son 0-based
+    // B2..N2 => r=1, c=1..13
+    for (let c = 1; c <= 13; c++) styleCell(1, c, headerStyle);
+    // B3..N3 => r=2
+    for (let c = 1; c <= 13; c++) styleCell(2, c, headerStyle);
+
+    // Colorear C4..N7 (datos)
+    for (let i = 2; i <= 5; i++) {      // filas aoa mantos
+        for (let j = 1; j <= 12; j++) { // cols aoa valores (C..N)
+            const r = 1 + i; // origen B2 => r base 1
             const c = 1 + j;
-            const addr = XLSX.utils.encode_cell({ r, c });
 
+            const addr = XLSX.utils.encode_cell({ r, c });
             const cell = ws[addr];
             if (!cell) continue;
 
@@ -118,7 +145,7 @@ export async function writeInspeccionExcel(opts: {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, 'Mediciones');
 
-    const b64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+    const b64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64', cellStyles: true });
     await FileSystem.writeAsStringAsync(uri, b64, { encoding: 'base64' as any });
 
     return uri;
