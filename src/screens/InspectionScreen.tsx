@@ -1,15 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import {
-    View,
-    Text,
-    ScrollView,
-    StyleSheet,
-    useWindowDimensions,
-    Keyboard,
-    TextInput,
-    KeyboardAvoidingView,
-    Platform,
-} from 'react-native';
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions, Keyboard, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
 import { RouteProp, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
 import { TabView, TabBar } from 'react-native-tab-view';
@@ -30,19 +20,6 @@ export default function InspectionScreen() {
     const [inspeccionNombre, setInspeccionNombre] = useState<string>('');
     const [map, setMap] = useState<Record<PointKey, string>>({});
 
-    const [kbHeight, setKbHeight] = useState(0);
-
-    useEffect(() => {
-        const show = Keyboard.addListener('keyboardDidShow', e => {
-            setKbHeight(e.endCoordinates?.height ?? 0);
-        });
-        const hide = Keyboard.addListener('keyboardDidHide', () => setKbHeight(0));
-        return () => {
-            show.remove();
-            hide.remove();
-        };
-    }, []);
-
     useEffect(() => {
         const load = async () => {
             const insp = await getInspeccion(route.params.inspeccionId);
@@ -58,17 +35,6 @@ export default function InspectionScreen() {
         load().catch(() => {});
     }, [route.params.inspeccionId]);
 
-    const routes = useMemo(
-        () => [
-            { key: 'm1', title: 'Manto 1' },
-            { key: 'm2', title: 'Manto 2' },
-            { key: 'm3', title: 'Manto 3' },
-            { key: 'm4', title: 'Manto 4' },
-        ],
-        [],
-    );
-    const [index, setIndex] = useState(0);
-
     const completedByTabKey = useMemo(() => {
         const out: Record<string, boolean> = {};
         for (let m = 1; m <= 4; m++) {
@@ -83,6 +49,18 @@ export default function InspectionScreen() {
         }
         return out;
     }, [map]);
+
+    const routes = useMemo(
+        () => [
+            { key: 'm1', title: 'Manto 1' },
+            { key: 'm2', title: 'Manto 2' },
+            { key: 'm3', title: 'Manto 3' },
+            { key: 'm4', title: 'Manto 4' },
+        ],
+        [completedByTabKey],
+    );
+
+    const [index, setIndex] = useState(0);
 
     const renderScene = ({ route: r }: any) => {
         const manto: 1 | 2 | 3 | 4 =
@@ -119,33 +97,28 @@ export default function InspectionScreen() {
         let idx = 0;
 
         return (
-            <KeyboardAvoidingView
-                style={{ flex: 1 }}
-                behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-                keyboardVerticalOffset={0}
-            >
-                <ScrollView
-                    keyboardShouldPersistTaps="handled"
-                    contentContainerStyle={{ padding: 12, paddingBottom: 24 + kbHeight }}
-                >
-                    <Text style={styles.header}>{inspeccionNombre}</Text>
+            <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 }}>
 
-                    {[1, 2, 3].map(med => (
-                        <View key={med} style={styles.block}>
-                            <Text style={styles.blockTitle}>Medición {med}</Text>
-                            {Row(med as 1 | 2 | 3, 1, idx++)}
-                            {Row(med as 1 | 2 | 3, 2, idx++)}
-                            {Row(med as 1 | 2 | 3, 3, idx++)}
-                            {Row(med as 1 | 2 | 3, 4, idx++)}
-                        </View>
-                    ))}
-                </ScrollView>
-            </KeyboardAvoidingView>
+                <Text style={styles.header}>{inspeccionNombre}</Text>
+
+                {[1, 2, 3].map(med => (
+                    <View key={med} style={styles.block}>
+                        <Text style={styles.blockTitle}>Medición {med}</Text>
+                        {Row(med as 1 | 2 | 3, 1, idx++)}
+                        {Row(med as 1 | 2 | 3, 2, idx++)}
+                        {Row(med as 1 | 2 | 3, 3, idx++)}
+                        {Row(med as 1 | 2 | 3, 4, idx++)}
+                    </View>
+                ))}
+            </ScrollView>
         );
     };
 
     return (
-        <View style={{ flex: 1 }}>
+        <KeyboardAvoidingView
+            style={{ flex: 1 }}
+            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        >
             <TabView
                 navigationState={{ index, routes }}
                 renderScene={renderScene}
@@ -157,13 +130,14 @@ export default function InspectionScreen() {
                         scrollEnabled
                         indicatorStyle={{ backgroundColor: 'black' }}
                         style={{ backgroundColor: 'white' }}
-                        renderLabel={({ route: rr, focused }: any) => {
+                        inactiveColor="#666"
+                        activeColor="black"
+                        renderLabel={({ route: rr, focused, color }: any) => {
                             const complete = !!completedByTabKey[rr.key];
-                            const base = focused ? '#111' : '#666';
                             return (
                                 <Text
                                     style={{
-                                        color: complete ? 'green' : base,
+                                        color: complete ? 'green' : color,
                                         fontWeight: focused ? '700' : '600',
                                     }}
                                 >
@@ -174,7 +148,7 @@ export default function InspectionScreen() {
                     />
                 )}
             />
-        </View>
+        </KeyboardAvoidingView>
     );
 }
 

@@ -26,18 +26,15 @@ function normalizeForStore(ui: string): string {
     return `${a},${frac}`;
 }
 
-
 function applyRules(prev: string, raw: string): string {
-    if (raw === '') return '';
+    let s = raw.replace(/\./g, ',').replace(/[^\d,]/g, '');
 
-    if (/[^0-9,\.]/.test(raw)) return prev;
+    if (s.startsWith(',')) s = '0' + s;
 
-    let s = raw.replace(/\./g, ',');
-
-    if (s.startsWith(',')) return prev;
-
-    const commas = (s.match(/,/g) || []).length;
-    if (commas > 1) return prev;
+    const firstComma = s.indexOf(',');
+    if (firstComma !== -1) {
+        s = s.slice(0, firstComma + 1) + s.slice(firstComma + 1).replace(/,/g, '');
+    }
 
     const maxLen = s.startsWith('1') ? 4 : 3;
     if (s.length > maxLen) s = s.slice(0, maxLen);
@@ -45,11 +42,10 @@ function applyRules(prev: string, raw: string): string {
     if (s === '') return '';
 
     const hasComma = s.includes(',');
-    const [intRaw = '', fracRaw = ''] = s.split(',');
+    const parts = s.split(',');
+    let intStr = parts[0] ?? '';
+    let fracStr = parts[1] ?? '';
 
-    if (!intRaw) return prev;
-
-    let intStr = intRaw;
     if (intStr.length > 1) {
         const n = parseInt(intStr, 10);
         if (!Number.isFinite(n)) return prev;
@@ -59,10 +55,11 @@ function applyRules(prev: string, raw: string): string {
     const intVal = Number(intStr);
     if (!Number.isFinite(intVal) || intVal < 0 || intVal > 10) return prev;
 
-    let fracStr = fracRaw;
     if (fracStr.length > 1) fracStr = fracStr.slice(0, 1);
 
-    if (intVal === 10 && fracStr.length > 0 && fracStr !== '0') return prev;
+    if (intVal === 10 && fracStr.length > 0 && fracStr !== '0') {
+        fracStr = '0';
+    }
 
     let out = intStr;
     if (hasComma) out = `${intStr},${fracStr}`;
@@ -86,14 +83,18 @@ export default function ItemRow({
                                 }: Props) {
     const ok = value.trim().length > 0;
 
-    // cola de guardados (evita carreras si tipeas rápido)
+    const internalRef = useRef<TextInput>(null);
+
+    const handleRef = (r: TextInput | null) => {
+        internalRef.current = r as TextInput;
+        if (inputRef) inputRef(r);
+    };
+
     const saveChainRef = useRef<Promise<void>>(Promise.resolve());
     const lastStoredRef = useRef<string>(normalizeForStore(value));
 
-    // mantener lastStoredRef consistente si el padre cambia value (carga inicial, etc.)
     useMemo(() => {
         lastStoredRef.current = normalizeForStore(value);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [value]);
 
     const enqueueSave = (storeVal: string) => {
@@ -127,11 +128,10 @@ export default function ItemRow({
                 </Text>
 
                 <TextInput
-                    ref={inputRef}
+                    ref={handleRef}
                     value={value}
                     placeholder="0 a 10"
-                    // mejor para decimales también en Android; igual bloqueamos por reglas
-                    keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'decimal-pad'}
+                    keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
                     inputMode="decimal"
                     returnKeyType={isLast ? 'done' : 'next'}
                     blurOnSubmit={isLast}
@@ -141,16 +141,20 @@ export default function ItemRow({
                     }}
                     onChangeText={raw => {
                         const nextUi = applyRules(value, raw);
-                        if (nextUi === value) return;
 
-                        onValueChange(nextUi);
+                        if (nextUi !== raw) {
+                            internalRef.current?.setNativeProps({ text: nextUi });
+                        }
 
-                        const storeVal = normalizeForStore(nextUi);
-                        enqueueSave(storeVal);
+                        if (nextUi !== value) {
+                            onValueChange(nextUi);
+                            enqueueSave(normalizeForStore(nextUi));
+                        }
                     }}
                     onBlur={() => {
-                        // si queda "x," => convertir a "x,0" y persistir
-                        const storeVal = normalizeForStore(value);
+                        let storeVal = normalizeForStore(value);
+                        if (storeVal.endsWith(',')) storeVal += '0';
+
                         if (storeVal !== value) onValueChange(storeVal);
                         enqueueSave(storeVal);
                     }}

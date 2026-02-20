@@ -83,30 +83,26 @@ async function addToAlbum(asset: MediaLibrary.Asset) {
     }
 }
 
-async function openImageExternallySafe(fileUri: string) {
-    let uriToOpen = fileUri;
-
-    if (Platform.OS === 'android' && uriToOpen.startsWith('file://')) {
-        const fn = (FileSystem as any).getContentUriAsync;
-        if (typeof fn === 'function') {
-            uriToOpen = await fn(uriToOpen);
+async function openImageExternally(uri: string) {
+    try {
+        if (Platform.OS === 'android') {
+            try {
+                const IntentLauncher = require('expo-intent-launcher');
+                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+                    data: uri,
+                    flags: 1,
+                    type: 'image/*',
+                });
+                return;
+            } catch {
+            }
         }
-    }
-
-    if (Platform.OS === 'android') {
-        try {
-            const IntentLauncher = require('expo-intent-launcher');
-            await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-                data: uriToOpen,
-                flags: 1,
-                type: 'image/*',
-            });
-            return;
-        } catch {
-        }
-    }
-
-    await Linking.openURL(uriToOpen);
+        await Linking.openURL(uri).catch(() => {
+            if (Platform.OS === 'ios') {
+                Linking.openURL('photos-redirect://');
+            }
+        });
+    } catch {}
 }
 
 function CaptureModal({
@@ -141,12 +137,10 @@ function CaptureModal({
             <View style={styles.captureBackdrop}>
                 <ViewShot
                     ref={ref}
-                    options={{ format: 'png', quality: 1, result: 'tmpfile' }}
                     style={styles.captureBox}
+                    options={{ format: 'png', quality: 1 }}
                 >
-                    <View style={{ transform: [{ scale: 2 }], alignSelf: 'flex-start' }}>
-                        {points ? <MeasurementTableShot points={points} /> : null}
-                    </View>
+                    {points ? <MeasurementTableShot points={points} /> : null}
                 </ViewShot>
             </View>
         </Modal>
@@ -168,7 +162,10 @@ export default function ProjectListScreen() {
 
     const filteredRows = useMemo(() => {
         if (!qNorm) return rows;
-        return rows.filter(r => normalizeSearch(`${r.numero} ${r.nombre}`).includes(qNorm));
+        return rows.filter(r => {
+            const hay = normalizeSearch(`${r.numero} ${r.nombre}`);
+            return hay.includes(qNorm);
+        });
     }, [rows, qNorm]);
 
     const [capVisible, setCapVisible] = useState(false);
@@ -280,7 +277,6 @@ export default function ProjectListScreen() {
                 points,
             });
 
-            // Imagen (tabla)
             const shotTmp = await captureTable(points);
             if (!shotTmp) {
                 niceAlert('Error', 'No se pudo generar la imagen.');
@@ -307,7 +303,7 @@ export default function ProjectListScreen() {
             await setExportMeta({
                 inspeccionId: item.id,
                 nextExportCount: nextCount,
-                lastImageUri: finalUri,
+                lastImageUri: asset.uri,
             });
 
             await load();
@@ -320,21 +316,13 @@ export default function ProjectListScreen() {
         }
     };
 
-    const openLastImage = async (uri: string) => {
-        try {
-            await openImageExternallySafe(uri);
-        } catch {
-            niceAlert('Error', 'No se pudo abrir la última imagen.');
-        }
-    };
-
     const renderItem = ({ item }: { item: Row }) => {
         const busy = !!exporting[item.id];
-        const canGenerate = item.completados >= TOTAL_PUNTOS;
+        const canExport = item.completados >= TOTAL_PUNTOS;
 
         return (
             <View style={styles.card}>
-                <View style={{ flex: 1, paddingRight: 10 }}>
+                <View style={{ flex: 1, paddingRight: 12 }}>
                     <Text style={styles.title}>
                         {item.numero} - {item.nombre}
                     </Text>
@@ -342,46 +330,35 @@ export default function ProjectListScreen() {
                         Progreso: {item.completados} / {TOTAL_PUNTOS}
                     </Text>
 
-                    <View style={styles.leftActionsRow}>
-                        <PillButton
-                            title={busy ? 'Generando…' : 'Generar imagen'}
-                            onPress={() => handleExport(item)}
-                            disabled={!canGenerate || busy}
-                            size="sm"
-                        />
-                        {item.last_image_uri ? (
+                    <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
+                        <View style={{ flex: 1 }}>
                             <PillButton
-                                title="Abrir última imagen"
-                                variant="outline"
-                                onPress={() => openLastImage(item.last_image_uri as string)}
-                                disabled={busy}
-                                size="sm"
+                                title={busy ? 'Generando…' : 'Generar imagen'}
+                                onPress={() => handleExport(item)}
+                                disabled={!canExport || busy}
                             />
+                        </View>
+                        {item.last_image_uri ? (
+                            <View style={{ flex: 1 }}>
+                                <PillButton
+                                    title="Abrir última imagen"
+                                    variant="outline"
+                                    onPress={() => openImageExternally(item.last_image_uri as string)}
+                                    disabled={busy}
+                                />
+                            </View>
                         ) : null}
                     </View>
                 </View>
 
-                <View style={styles.rightActions}>
+                <View style={{ width: 100, gap: 6 }}>
                     <PillButton
                         title="Abrir"
                         onPress={() => nav.navigate('Inspection', { inspeccionId: item.id })}
                         disabled={busy}
-                        size="sm"
                     />
-                    <PillButton
-                        title="Editar"
-                        variant="outline"
-                        onPress={() => openEdit(item)}
-                        disabled={busy}
-                        size="sm"
-                    />
-                    <PillButton
-                        title="Eliminar"
-                        variant="danger"
-                        onPress={() => remove(item)}
-                        disabled={busy}
-                        size="sm"
-                    />
+                    <PillButton title="Editar" variant="outline" onPress={() => openEdit(item)} disabled={busy} />
+                    <PillButton title="Eliminar" variant="danger" onPress={() => remove(item)} disabled={busy} />
                 </View>
             </View>
         );
@@ -390,7 +367,7 @@ export default function ProjectListScreen() {
     return (
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
             <View style={{ flex: 1 }}>
-                {/* búsqueda */}
+                {/* barra de búsqueda */}
                 <View style={styles.searchWrap}>
                     <Text style={styles.searchIcon}>🔎</Text>
                     <TextInput
@@ -405,7 +382,11 @@ export default function ProjectListScreen() {
                         style={styles.searchInput}
                     />
                     {!!query.trim() && (
-                        <TouchableOpacity onPress={() => setQuery('')} style={styles.clearBtn}>
+                        <TouchableOpacity
+                            onPress={() => setQuery('')}
+                            style={styles.clearBtn}
+                            accessibilityRole="button"
+                        >
                             <Text style={styles.clearText}>✕</Text>
                         </TouchableOpacity>
                     )}
@@ -473,7 +454,12 @@ const styles = StyleSheet.create({
         paddingVertical: 8,
     },
     searchIcon: { marginRight: 8, fontSize: 14 },
-    searchInput: { flex: 1, fontSize: 14, color: '#111', paddingVertical: 0 },
+    searchInput: {
+        flex: 1,
+        fontSize: 14,
+        color: '#111',
+        paddingVertical: 0,
+    },
     clearBtn: {
         marginLeft: 8,
         width: 28,
@@ -484,31 +470,22 @@ const styles = StyleSheet.create({
         backgroundColor: '#E4E7EC',
     },
     clearText: { fontSize: 14, fontWeight: '800', color: '#344054' },
-    searchMeta: { marginHorizontal: 12, marginBottom: 6, color: '#667085', fontSize: 12 },
+    searchMeta: {
+        marginHorizontal: 12,
+        marginBottom: 6,
+        color: '#667085',
+        fontSize: 12,
+    },
 
     card: {
         flexDirection: 'row',
         padding: 12,
         borderBottomWidth: 1,
         borderColor: '#ddd',
-        alignItems: 'flex-start',
+        alignItems: 'center',
     },
     title: { fontSize: 16, fontWeight: '600' },
     meta: { fontSize: 12, color: '#666', marginTop: 4 },
-
-    leftActionsRow: {
-        flexDirection: 'row',
-        flexWrap: 'wrap',
-        gap: 8,
-        marginTop: 10,
-        alignItems: 'center',
-    },
-
-    rightActions: {
-        gap: 6,
-        alignItems: 'flex-end',
-    },
-
     formLabel: { fontWeight: '600' },
     input: { borderWidth: 1, borderColor: '#aaa', borderRadius: 6, padding: 10 },
     footer: {
@@ -517,7 +494,6 @@ const styles = StyleSheet.create({
         borderColor: '#ddd',
         backgroundColor: 'white',
     },
-
     captureBackdrop: {
         flex: 1,
         backgroundColor: 'rgba(0,0,0,0.15)',
