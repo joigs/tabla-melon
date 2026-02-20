@@ -1,7 +1,7 @@
 {
   "expo": {
-    "name": "camara-vertical",
-    "slug": "camara-vertical",
+    "name": "tabla-melon",
+    "slug": "tabla-melon",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
@@ -23,43 +23,25 @@
       "edgeToEdgeEnabled": true,
       "predictiveBackGestureEnabled": false,
       "permissions": [
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
-        "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
-        "android.permission.READ_MEDIA_IMAGES",
-        "android.permission.READ_MEDIA_VIDEO",
-        "android.permission.READ_MEDIA_AUDIO",
-        "android.permission.CAMERA",
-        "android.permission.RECORD_AUDIO",
-        "android.permission.READ_EXTERNAL_STORAGE",
-        "android.permission.WRITE_EXTERNAL_STORAGE",
         "android.permission.READ_MEDIA_VISUAL_USER_SELECTED",
         "android.permission.READ_MEDIA_IMAGES",
         "android.permission.READ_MEDIA_VIDEO",
         "android.permission.READ_MEDIA_AUDIO"
       ],
-      "package": "com.anonymous.camaravertical"
+      "package": "com.anonymous.tablamelon"
     },
     "web": {
       "favicon": "./assets/favicon.png"
     },
     "plugins": [
       [
-        "expo-camera",
-        {
-          "cameraPermission": "Permite que Camara Vertical use la cámara",
-          "microphonePermission": "Permite que Camara Vertical use el micrófono"
-        }
-      ],
-      [
         "expo-media-library",
         {
-          "photosPermission": "Permite que Camara Vertical acceda a tus fotos",
-          "savePhotosPermission": "Permite que Camara Vertical guarde fotos"
+          "photosPermission": "Permite acceso a tus fotos",
+          "savePhotosPermission": "Permite que la aplicación guarde fotos"
         }
-      ]
+      ],
+      "expo-sqlite"
     ]
   }
 }

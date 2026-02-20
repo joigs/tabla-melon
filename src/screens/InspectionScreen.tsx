@@ -1,166 +1,114 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet } from 'react-native';
-import { RouteProp, useFocusEffect, useRoute } from '@react-navigation/native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { View, Text, ScrollView, StyleSheet, useWindowDimensions, Keyboard, TextInput } from 'react-native';
+import { RouteProp, useRoute } from '@react-navigation/native';
 import type { RootStackParamList } from '../../App';
-import { loadProjects, saveProjects } from '../storage';
-import { Project, TabKey } from '../types';
-import { itemsByTab } from '../items';
+import { TabView, TabBar } from 'react-native-tab-view';
+import InlineBanner from '../components/InlineBanner';
 import ItemRow from '../components/ItemRow';
-import { TabView, SceneMap, TabBar } from 'react-native-tab-view';
-import PillButton from '../components/PillButton';
+import { getInspeccion, listPuntosByInspeccion } from '../db';
 
 type R = RouteProp<RootStackParamList, 'Inspection'>;
+type PointKey = string; // `${manto}-${medicion}-${punto}`
 
 export default function InspectionScreen() {
     const route = useRoute<R>();
-    const [project, setProject] = useState<Project | null>(null);
+    const { width } = useWindowDimensions();
 
-    useFocusEffect(
-        React.useCallback(() => {
-            const load = async () => {
-                const all = await loadProjects();
-                const p = all.find(x => x.number === route.params.projectNumber) || null;
-                setProject(p);
-            };
-            load();
-        }, [route.params.projectNumber]),
+    const [inspeccionNombre, setInspeccionNombre] = useState<string>('');
+    const [map, setMap] = useState<Record<PointKey, string>>({});
+
+    useEffect(() => {
+        const load = async () => {
+            const insp = await getInspeccion(route.params.inspeccionId);
+            setInspeccionNombre(insp ? `${insp.numero} - ${insp.nombre}` : 'No encontrado');
+
+            const puntos = await listPuntosByInspeccion(route.params.inspeccionId);
+            const next: Record<string, string> = {};
+            for (const p of puntos) {
+                next[`${p.manto}-${p.medicion}-${p.punto}`] = p.valor_texto ?? '';
+            }
+            setMap(next);
+        };
+        load().catch(() => {});
+    }, [route.params.inspeccionId]);
+
+    const routes = useMemo(
+        () => [
+            { key: 'm1', title: 'Manto 1' },
+            { key: 'm2', title: 'Manto 2' },
+            { key: 'm3', title: 'Manto 3' },
+            { key: 'm4', title: 'Manto 4' },
+        ],
+        [],
     );
-
-    const persist = async (p: Project) => {
-        const all = await loadProjects();
-        const idx = all.findIndex(x => x.number === p.number);
-        if (idx >= 0) all[idx] = p;
-        await saveProjects(all);
-        setProject(p);
-        return p;
-    };
-
-    const setMachineRoom = async (choice: 'yes' | 'no') => {
-        if (!project) return;
-        if (project.machineRoom === choice) return;
-        const updated = { ...project, machineRoom: choice };
-        await persist(updated);
-    };
-
     const [index, setIndex] = useState(0);
-    const routes = useMemo(() => {
-        const tabs: { key: TabKey; title: string }[] = [
-            { key: 'general_sellos', title: 'General/Sellos' },
-            { key: 'cabina', title: 'Cabina' },
-            { key: 'sobre_cabina', title: 'Sobre cabina' },
-            { key: 'pozo', title: 'Pozo' },
-        ];
-        if (project?.machineRoom === 'yes') {
-            tabs.splice(1, 0, { key: 'mr_yes', title: 'Sala de máquinas' });
-        } else if (project?.machineRoom === 'no') {
-            tabs.splice(1, 0, { key: 'mr_no', title: 'Sin sala máquinas' });
-        } else {
-            tabs.splice(
-                1,
-                0,
-                { key: 'mr_yes', title: 'Sala de máquinas' },
-                { key: 'mr_no', title: 'Sin sala máquinas' },
-            );
-        }
-        return tabs;
-    }, [project?.machineRoom]);
 
-    if (!project) {
-        return (
-            <View style={{ flex: 1, padding: 16 }}>
-                <Text>No encontrado</Text>
-            </View>
-        );
-    }
+    const renderScene = ({ route: r }: any) => {
+        const manto: 1 | 2 | 3 | 4 =
+            r.key === 'm1' ? 1 : r.key === 'm2' ? 2 : r.key === 'm3' ? 3 : 4;
 
-    const machineRoomWidget = (() => {
-        const isYes = project.machineRoom === 'yes';
-        const isNo = project.machineRoom === 'no';
+        // refs para “next”
+        const refs: Array<TextInput | null> = [];
+        const setRef = (i: number) => (ref: TextInput | null) => {
+            refs[i] = ref;
+        };
+        const focusNext = (i: number) => {
+            const next = refs[i + 1];
+            if (next) next.focus();
+            else Keyboard.dismiss();
+        };
 
-        return (
-            <View style={styles.radioRow}>
-                <Text style={{ fontWeight: '600' }}>¿Tiene sala de máquinas?</Text>
-                <View style={styles.radioBtns}>
-                    <PillButton
-                        title="Sí"
-                        onPress={() => setMachineRoom('yes')}
-                        variant={isYes ? 'primary' : 'outline'}
-                    />
-                    <PillButton
-                        title="No"
-                        onPress={() => setMachineRoom('no')}
-                        variant={isNo ? 'primary' : 'outline'}
-                    />
-                </View>
-                <Text style={styles.hint}>
-
-                </Text>
-            </View>
-        );
-    })();
-
-    const renderList = (tab: TabKey) => {
-        const items = itemsByTab(tab);
-        if (tab !== 'mr_no') {
+        const Row = (medicion: 1 | 2 | 3, punto: 1 | 2 | 3 | 4, idx: number) => {
+            const k = `${manto}-${medicion}-${punto}`;
             return (
-                <View>
-                    {items.map(it => (
-                        <ItemRow key={it.id} item={it} project={project} />
-                    ))}
-                </View>
+                <ItemRow
+                    key={k}
+                    inspeccionId={route.params.inspeccionId}
+                    manto={manto}
+                    medicion={medicion}
+                    punto={punto}
+                    value={map[k] ?? ''}
+                    onValueChange={next => setMap(prev => ({ ...prev, [k]: next }))}
+                    inputRef={setRef(idx)}
+                    onSubmitNext={() => focusNext(idx)}
+                    isLast={idx === 11}
+                />
             );
-        }
-        const groups = [...new Set(items.map(i => i.group || ''))];
+        };
+
+        let idx = 0;
+
         return (
-            <View>
-                {groups.map(g => (
-                    <View key={g}>
-                        {!!g && <Text style={styles.groupTitle}>{g}</Text>}
-                        {items
-                            .filter(i => i.group === g)
-                            .map(it => (
-                                <ItemRow key={it.id} item={it} project={project} />
-                            ))}
+            <ScrollView contentContainerStyle={{ padding: 12, paddingBottom: 24 }}>
+                <InlineBanner
+                    banner={{
+                        message:
+                            'Regla: mínimo 4 mediciones por manto (puntos 1–4) con separación mínima de 10 cm. Se realizan 3 mediciones (12 puntos por manto).',
+                    }}
+                />
+                <Text style={styles.header}>{inspeccionNombre}</Text>
+
+                {[1, 2, 3].map(med => (
+                    <View key={med} style={styles.block}>
+                        <Text style={styles.blockTitle}>Medición {med}</Text>
+                        {Row(med as 1 | 2 | 3, 1, idx++)}
+                        {Row(med as 1 | 2 | 3, 2, idx++)}
+                        {Row(med as 1 | 2 | 3, 3, idx++)}
+                        {Row(med as 1 | 2 | 3, 4, idx++)}
                     </View>
                 ))}
-            </View>
+            </ScrollView>
         );
     };
-
-    const GeneralTab = () => (
-        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
-            <View style={{ padding: 8 }}>
-                <Text style={styles.sectionTitle}>General y Sellos</Text>
-            </View>
-            {renderList('general_sellos')}
-            <View style={{ height: 16 }} />
-            {machineRoomWidget}
-        </ScrollView>
-    );
-
-    const TabFactory = (key: TabKey) => () => (
-        <ScrollView contentContainerStyle={{ paddingBottom: 16 }}>
-            {renderList(key)}
-        </ScrollView>
-    );
-
-    const scenes = SceneMap({
-        general_sellos: GeneralTab,
-        mr_yes: TabFactory('mr_yes'),
-        mr_no: TabFactory('mr_no'),
-        cabina: TabFactory('cabina'),
-        sobre_cabina: TabFactory('sobre_cabina'),
-        pozo: TabFactory('pozo'),
-    });
 
     return (
         <View style={{ flex: 1 }}>
             <TabView
                 navigationState={{ index, routes }}
-                renderScene={scenes}
+                renderScene={renderScene}
                 onIndexChange={setIndex}
-                initialLayout={{ width: 360 }}
-                renderTabBar={props => (
+                initialLayout={{ width }}
+                renderTabBar={(props: any) => (
                     <TabBar
                         {...props}
                         scrollEnabled
@@ -176,9 +124,14 @@ export default function InspectionScreen() {
 }
 
 const styles = StyleSheet.create({
-    sectionTitle: { fontSize: 16, fontWeight: '700', paddingHorizontal: 12 },
-    radioRow: { padding: 12, gap: 8, borderTopWidth: 1, borderColor: '#eee' },
-    radioBtns: { flexDirection: 'row', gap: 8 },
-    hint: { fontSize: 12, color: '#666' },
-    groupTitle: { paddingHorizontal: 12, paddingTop: 12, fontWeight: '700' },
+    header: { fontSize: 14, fontWeight: '700', marginBottom: 8 },
+    block: {
+        backgroundColor: '#fff',
+        borderWidth: 1,
+        borderColor: '#eee',
+        borderRadius: 12,
+        padding: 12,
+        marginTop: 12,
+    },
+    blockTitle: { fontWeight: '800', marginBottom: 8 },
 });

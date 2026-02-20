@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import {
     View,
     Text,
@@ -9,38 +9,34 @@ import {
     TouchableOpacity,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { Project } from '../types';
-import {
-    deleteProject,
-    loadProjects,
-    nextDefaultNumber,
-    saveProjects,
-    upsertProject,
-} from '../storage';
-import { expectedItemsFor, PROJECT_ALBUM_NAME } from '../items';
-import { countProgress } from '../media';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { RootStackParamList } from '../../App';
+import type { RootStackParamList } from '../../App';
 import PillButton from '../components/PillButton';
 import { niceAlert, niceConfirm } from '../components/NiceAlert';
+import {
+    createInspeccion,
+    deleteInspeccion,
+    updateInspeccion,
+    listInspeccionesConProgreso,
+    TOTAL_PUNTOS,
+} from '../db';
+
+type Nav = NativeStackNavigationProp<RootStackParamList>;
+
+type Row = { id: number; numero: number; nombre: string; completados: number };
 
 export default function ProjectListScreen() {
-    const nav = useNavigation<NativeStackNavigationProp<RootStackParamList>>();
-    const [projects, setProjects] = useState<Project[]>([]);
-    const [progressMap, setProgressMap] = useState<
-        Record<number, { taken: number; total: number } | null>
-    >({});
+    const nav = useNavigation<Nav>();
+    const [rows, setRows] = useState<Row[]>([]);
     const [modalVisible, setModalVisible] = useState(false);
-    const [editing, setEditing] = useState<Project | null>(null);
-    const [name, setName] = useState('');
-    const [number, setNumber] = useState<number>(1);
+    const [editing, setEditing] = useState<Row | null>(null);
+    const [nombre, setNombre] = useState('');
+    const [numero, setNumero] = useState<number>(1);
 
     const load = async () => {
-        const list = await loadProjects();
-        // Ordenar de mayor a menor número
-        const sorted = [...list].sort((a, b) => b.number - a.number);
-        setProjects(sorted);
+        const list = await listInspeccionesConProgreso();
+        setRows(list);
     };
 
     useFocusEffect(
@@ -50,134 +46,106 @@ export default function ProjectListScreen() {
     );
 
     useEffect(() => {
-        const run = async () => {
-            const map: Record<number, any> = {};
-            for (const p of projects) {
-                const exp = expectedItemsFor(p);
-                if (exp.length === 0) {
-                    map[p.number] = null;
-                    continue;
-                }
-                try {
-                    const pr = await countProgress(p, exp);
-                    map[p.number] = pr;
-                } catch {
-                    map[p.number] = null;
-                }
-            }
-            setProgressMap(map);
-        };
-        if (projects.length) run();
-    }, [projects]);
+        load().catch(() => {});
+    }, []);
 
     const openNew = () => {
         setEditing(null);
-        setName('');
-        setNumber(nextDefaultNumber(projects));
+        setNombre('');
+        setNumero(rows.length ? Math.max(...rows.map(r => r.numero)) + 1 : 1);
         setModalVisible(true);
     };
 
-    const openEdit = (p: Project) => {
-        setEditing(p);
-        setName(p.name);
-        setNumber(p.number);
+    const openEdit = (r: Row) => {
+        setEditing(r);
+        setNombre(r.nombre);
+        setNumero(r.numero);
         setModalVisible(true);
     };
 
     const save = async () => {
-        if (!name.trim()) {
+        const nombreTrim = nombre.trim();
+
+        if (!nombreTrim) {
             niceAlert('Nombre requerido', '');
             return;
         }
-        const exists = projects.some(
-            p => p.number === number && (!editing || p.number !== editing.number),
+        if (!numero || Number.isNaN(numero)) {
+            niceAlert('Número inválido', '');
+            return;
+        }
+
+        const exists = rows.some(
+            r => r.numero === numero && (!editing || r.id !== editing.id),
         );
         if (exists) {
             niceAlert('El número ya existe', '');
             return;
         }
-        const toSave: Project = {
-            number,
-            name: name.trim(),
-            machineRoom: editing?.machineRoom ?? null,
-        };
-        if (editing && editing.number !== number) {
-            const rest = projects.filter(p => p.number !== editing.number);
-            // En almacenamiento sigue ascendente, la UI lo invierte en load()
-            await saveProjects(rest.concat([toSave]).sort((a, b) => a.number - b.number));
+
+        if (editing) {
+            await updateInspeccion(editing.id, numero, nombreTrim);
         } else {
-            await upsertProject(toSave);
+            await createInspeccion(numero, nombreTrim);
         }
+
         setModalVisible(false);
         load();
     };
 
-    const remove = (p: Project) => {
-        niceConfirm(
-            'Eliminar proyecto',
-            `¿Eliminar ${PROJECT_ALBUM_NAME(p)}? No se borran fotos.`,
-            {
-                okText: 'Eliminar',
-                cancelText: 'Cancelar',
-                onOk: async () => {
-                    await deleteProject(p.number);
-                    load();
-                },
+    const remove = (r: Row) => {
+        niceConfirm('Eliminar inspección', `¿Eliminar ${r.numero} - ${r.nombre}?`, {
+            okText: 'Eliminar',
+            cancelText: 'Cancelar',
+            onOk: async () => {
+                await deleteInspeccion(r.id);
+                load();
             },
-        );
+        });
     };
 
-    const renderItem = ({ item }: { item: Project }) => {
-        const pr = progressMap[item.number];
-        const label = pr ? `${pr.taken} / ${pr.total}` : '—';
-        return (
-            <TouchableOpacity
-                style={styles.card}
-                onPress={() => nav.navigate('Inspection', { projectNumber: item.number })}
-            >
-                <View style={{ flex: 1 }}>
-                    <Text style={styles.title}>
-                        {item.number} - {item.name}
-                    </Text>
-                    <Text style={styles.meta}>Progreso: {label}</Text>
-                </View>
-                <View style={{ gap: 6 }}>
-                    <PillButton
-                        title="Inspeccionar"
-                        onPress={() =>
-                            nav.navigate('Inspection', { projectNumber: item.number })
-                        }
-                    />
-                    <PillButton
-                        title="Editar"
-                        variant="outline"
-                        onPress={() => openEdit(item)}
-                    />
-                    <PillButton
-                        title="Eliminar"
-                        variant="danger"
-                        onPress={() => remove(item)}
-                    />
-                </View>
-            </TouchableOpacity>
-        );
-    };
+    const renderItem = ({ item }: { item: Row }) => (
+        <TouchableOpacity
+            style={styles.card}
+            onPress={() => nav.navigate('Inspection', { inspeccionId: item.id })}
+        >
+            <View style={{ flex: 1 }}>
+                <Text style={styles.title}>
+                    {item.numero} - {item.nombre}
+                </Text>
+                <Text style={styles.meta}>
+                    Progreso: {item.completados} / {TOTAL_PUNTOS}
+                </Text>
+            </View>
+
+            <View style={{ gap: 6 }}>
+                <PillButton
+                    title="Abrir"
+                    onPress={() => nav.navigate('Inspection', { inspeccionId: item.id })}
+                />
+                <PillButton title="Editar" variant="outline" onPress={() => openEdit(item)} />
+                <PillButton title="Eliminar" variant="danger" onPress={() => remove(item)} />
+            </View>
+        </TouchableOpacity>
+    );
 
     return (
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
             <View style={{ flex: 1 }}>
                 <FlatList
-                    data={projects}
-                    keyExtractor={p => String(p.number)}
+                    data={rows}
+                    keyExtractor={r => String(r.id)}
                     renderItem={renderItem}
                     ListEmptyComponent={
-                        <Text style={{ textAlign: 'center', marginTop: 24 }}>Sin proyectos</Text>
+                        <Text style={{ textAlign: 'center', marginTop: 24 }}>
+                            Sin inspecciones
+                        </Text>
                     }
                     contentContainerStyle={{ paddingBottom: 80 }}
                 />
 
                 <View style={styles.footer}>
-                    <PillButton title="Nuevo proyecto" onPress={openNew} />
+                    <PillButton title="Nueva inspección" onPress={openNew} />
                 </View>
             </View>
 
@@ -191,13 +159,15 @@ export default function ProjectListScreen() {
                         Número (único)
                     </Text>
                     <TextInput
-                        value={String(number)}
-                        onChangeText={t => setNumber(Number(t.replace(/[^\d]/g, '')) || 0)}
+                        value={String(numero)}
+                        onChangeText={t => setNumero(Number(t.replace(/[^\d]/g, '')) || 0)}
                         keyboardType="number-pad"
                         style={styles.input}
                     />
+
                     <Text style={styles.formLabel}>Nombre</Text>
-                    <TextInput value={name} onChangeText={setName} style={styles.input} />
+                    <TextInput value={nombre} onChangeText={setNombre} style={styles.input} />
+
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                         <PillButton
                             title="Cancelar"

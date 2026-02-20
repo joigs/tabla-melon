@@ -1,22 +1,14 @@
-export type MachineRoomChoice = 'yes' | 'no' | null;
-
-export type Project = {
-    number: number;
-    name: string;
-    machineRoom: MachineRoomChoice;
-};
-
-export type Item = {
+export type Inspeccion = {
     id: number;
-    name: string;
-    tab: TabKey;
-    group?: string;
+    numero: number;
+    nombre: string;
 };
 
-export type TabKey =
-    | 'general_sellos'
-    | 'mr_yes'
-    | 'mr_no'
-    | 'cabina'
-    | 'sobre_cabina'
-    | 'pozo';
+export type PuntoMedicion = {
+    id: number;
+    inspeccion_id: number;
+    manto: number;     // 1..4
+    medicion: number;  // 1..3
+    punto: number;     // 1..4
+    valor_texto: string | null;
+};
