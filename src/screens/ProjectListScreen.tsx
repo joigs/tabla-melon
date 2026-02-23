@@ -14,6 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
 import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../App';
+import * as IntentLauncher from 'expo-intent-launcher';
 import PillButton from '../components/PillButton';
 import { niceAlert, niceConfirm } from '../components/NiceAlert';
 import {
@@ -85,24 +86,28 @@ async function addToAlbum(asset: MediaLibrary.Asset) {
 
 async function openImageExternally(uri: string) {
     try {
-        if (Platform.OS === 'android') {
-            try {
-                const IntentLauncher = require('expo-intent-launcher');
-                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
-                    data: uri,
-                    flags: 1,
-                    type: 'image/*',
-                });
-                return;
-            } catch {
-            }
+        if (Platform.OS === 'ios') {
+            await Linking.openURL('photos-redirect://');
+            return;
         }
-        await Linking.openURL(uri).catch(() => {
-            if (Platform.OS === 'ios') {
-                Linking.openURL('photos-redirect://');
-            }
+
+        let contentUri = uri;
+
+        if (uri.startsWith('file://')) {
+            contentUri = await FileSystem.getContentUriAsync(uri);
+        }
+
+        await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+            data: contentUri,
+            flags: 1,
+            type: 'image/*',
         });
-    } catch {}
+
+    } catch (e: any) {
+        console.log('Error abriendo imagen:', e);
+        const errorMsg = e instanceof Error ? e.message : JSON.stringify(e);
+        niceAlert('Error al abrir', `Detalle:\n${errorMsg}`);
+    }
 }
 
 function CaptureModal({
@@ -303,7 +308,7 @@ export default function ProjectListScreen() {
             await setExportMeta({
                 inspeccionId: item.id,
                 nextExportCount: nextCount,
-                lastImageUri: asset.uri,
+                lastImageUri: finalUri,
             });
 
             await load();
@@ -367,7 +372,6 @@ export default function ProjectListScreen() {
     return (
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
             <View style={{ flex: 1 }}>
-                {/* barra de búsqueda */}
                 <View style={styles.searchWrap}>
                     <Text style={styles.searchIcon}>🔎</Text>
                     <TextInput

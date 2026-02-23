@@ -26,7 +26,7 @@ function RootNavigator() {
                     <Stack.Screen
                         name="Inspections"
                         component={InspectionListScreen}
-                        options={{ title: 'Inspecciones' }}
+                        options={{ title: 'Inspecciones Melón' }}
                     />
                     <Stack.Screen
                         name="Inspection"

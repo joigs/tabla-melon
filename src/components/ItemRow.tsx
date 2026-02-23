@@ -1,4 +1,4 @@
-import React, { useMemo, useRef } from 'react';
+import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, Keyboard, Platform } from 'react-native';
 import { setValorPunto } from '../db';
 
@@ -13,6 +13,7 @@ type Props = {
 
     inputRef?: (ref: TextInput | null) => void;
     onSubmitNext?: () => void;
+    onFocus?: () => void;
     isLast?: boolean;
 };
 
@@ -28,7 +29,6 @@ function normalizeForStore(ui: string): string {
 
 function applyRules(prev: string, raw: string): string {
     let s = raw.replace(/\./g, ',').replace(/[^\d,]/g, '');
-
     if (s.startsWith(',')) s = '0' + s;
 
     const firstComma = s.indexOf(',');
@@ -79,16 +79,16 @@ export default function ItemRow({
                                     onValueChange,
                                     inputRef,
                                     onSubmitNext,
+                                    onFocus,
                                     isLast = false,
                                 }: Props) {
     const ok = value.trim().length > 0;
 
-    const internalRef = useRef<TextInput>(null);
+    const [localValue, setLocalValue] = useState(value);
 
-    const handleRef = (r: TextInput | null) => {
-        internalRef.current = r as TextInput;
-        if (inputRef) inputRef(r);
-    };
+    useEffect(() => {
+        setLocalValue(value);
+    }, [value]);
 
     const saveChainRef = useRef<Promise<void>>(Promise.resolve());
     const lastStoredRef = useRef<string>(normalizeForStore(value));
@@ -128,34 +128,43 @@ export default function ItemRow({
                 </Text>
 
                 <TextInput
-                    ref={handleRef}
-                    value={value}
+                    ref={inputRef}
+                    value={localValue}
                     placeholder="0 a 10"
                     keyboardType={Platform.OS === 'ios' ? 'decimal-pad' : 'numeric'}
                     inputMode="decimal"
                     returnKeyType={isLast ? 'done' : 'next'}
                     blurOnSubmit={isLast}
+                    onFocus={onFocus}
                     onSubmitEditing={() => {
                         if (isLast) Keyboard.dismiss();
                         else onSubmitNext?.();
                     }}
                     onChangeText={raw => {
-                        const nextUi = applyRules(value, raw);
+                        const clean = applyRules(localValue, raw);
 
-                        if (nextUi !== raw) {
-                            internalRef.current?.setNativeProps({ text: nextUi });
-                        }
+                        if (clean !== raw) {
 
-                        if (nextUi !== value) {
-                            onValueChange(nextUi);
-                            enqueueSave(normalizeForStore(nextUi));
+                            setLocalValue(raw);
+                            setTimeout(() => {
+                                setLocalValue(clean);
+                                if (clean !== value) onValueChange(clean);
+                                enqueueSave(normalizeForStore(clean));
+                            }, 0);
+                        } else {
+                            setLocalValue(clean);
+                            if (clean !== value) onValueChange(clean);
+                            enqueueSave(normalizeForStore(clean));
                         }
                     }}
                     onBlur={() => {
-                        let storeVal = normalizeForStore(value);
+                        let storeVal = normalizeForStore(localValue);
                         if (storeVal.endsWith(',')) storeVal += '0';
 
-                        if (storeVal !== value) onValueChange(storeVal);
+                        if (storeVal !== localValue) {
+                            setLocalValue(storeVal);
+                            onValueChange(storeVal);
+                        }
                         enqueueSave(storeVal);
                     }}
                     style={styles.input}
