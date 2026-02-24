@@ -9,6 +9,7 @@ import {
     TouchableOpacity,
     Platform,
     Linking,
+    Switch,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useFocusEffect, useNavigation } from '@react-navigation/native';
@@ -22,7 +23,6 @@ import {
     deleteInspeccion,
     updateInspeccion,
     listInspeccionesConProgreso,
-    TOTAL_PUNTOS,
     getPointsMapByInspeccion,
     setExportMeta,
     type PointsMap,
@@ -40,7 +40,9 @@ type Row = {
     id: number;
     numero: number;
     nombre: string;
+    tiene_manto_4: number;
     completados: number;
+    puntos_totales: number;
     export_count?: number;
     last_image_uri?: string | null;
 };
@@ -112,17 +114,17 @@ async function openImageExternally(uri: string) {
 
 function CaptureModal({
                           visible,
-                          points,
+                          capData,
                           onDone,
                       }: {
     visible: boolean;
-    points: PointsMap | null;
+    capData: { points: PointsMap; tieneManto4: boolean } | null;
     onDone: (uri: string | null) => void;
 }) {
     const ref = useRef<ViewShot | null>(null);
 
     useEffect(() => {
-        if (!visible || !points) return;
+        if (!visible || !capData) return;
 
         const run = async () => {
             await sleep(80);
@@ -135,7 +137,7 @@ function CaptureModal({
         };
 
         run().catch(() => onDone(null));
-    }, [visible, points, onDone]);
+    }, [visible, capData, onDone]);
 
     return (
         <Modal visible={visible} transparent animationType="fade" onRequestClose={() => onDone(null)}>
@@ -145,7 +147,7 @@ function CaptureModal({
                     style={styles.captureBox}
                     options={{ format: 'png', quality: 1 }}
                 >
-                    {points ? <MeasurementTableShot points={points} /> : null}
+                    {capData ? <MeasurementTableShot points={capData.points} tieneManto4={capData.tieneManto4} /> : null}
                 </ViewShot>
             </View>
         </Modal>
@@ -159,6 +161,7 @@ export default function ProjectListScreen() {
     const [editing, setEditing] = useState<Row | null>(null);
     const [nombre, setNombre] = useState('');
     const [numero, setNumero] = useState<number>(1);
+    const [tieneManto4, setTieneManto4] = useState<boolean>(true);
 
     const [exporting, setExporting] = useState<Record<number, boolean>>({});
 
@@ -174,13 +177,13 @@ export default function ProjectListScreen() {
     }, [rows, qNorm]);
 
     const [capVisible, setCapVisible] = useState(false);
-    const [capPoints, setCapPoints] = useState<PointsMap | null>(null);
+    const [capData, setCapData] = useState<{ points: PointsMap; tieneManto4: boolean } | null>(null);
     const capResolverRef = useRef<((uri: string | null) => void) | null>(null);
 
-    const captureTable = (points: PointsMap) =>
+    const captureTable = (points: PointsMap, tieneManto4: boolean) =>
         new Promise<string | null>(resolve => {
             capResolverRef.current = resolve;
-            setCapPoints(points);
+            setCapData({ points, tieneManto4 });
             setCapVisible(true);
         });
 
@@ -188,7 +191,7 @@ export default function ProjectListScreen() {
         setCapVisible(false);
         const r = capResolverRef.current;
         capResolverRef.current = null;
-        setCapPoints(null);
+        setCapData(null);
         r?.(uri);
     };
 
@@ -211,6 +214,7 @@ export default function ProjectListScreen() {
         setEditing(null);
         setNombre('');
         setNumero(rows.length ? Math.max(...rows.map(r => r.numero)) + 1 : 1);
+        setTieneManto4(true);
         setModalVisible(true);
     };
 
@@ -218,6 +222,7 @@ export default function ProjectListScreen() {
         setEditing(r);
         setNombre(r.nombre);
         setNumero(r.numero);
+        setTieneManto4(r.tiene_manto_4 === 1);
         setModalVisible(true);
     };
 
@@ -240,9 +245,9 @@ export default function ProjectListScreen() {
         }
 
         if (editing) {
-            await updateInspeccion(editing.id, numero, nombreTrim);
+            await updateInspeccion(editing.id, numero, nombreTrim, tieneManto4 ? 1 : 0);
         } else {
-            await createInspeccion(numero, nombreTrim);
+            await createInspeccion(numero, nombreTrim, tieneManto4 ? 1 : 0);
         }
 
         setModalVisible(false);
@@ -262,7 +267,7 @@ export default function ProjectListScreen() {
 
     const handleExport = async (item: Row) => {
         if (exporting[item.id]) return;
-        if (item.completados < TOTAL_PUNTOS) return;
+        if (item.completados < item.puntos_totales) return;
 
         const started = Date.now();
         setExporting(prev => ({ ...prev, [item.id]: true }));
@@ -275,14 +280,16 @@ export default function ProjectListScreen() {
             }
 
             const points = await getPointsMapByInspeccion(item.id);
+            const hasManto4 = item.tiene_manto_4 === 1;
 
             await writeInspeccionExcel({
                 numero: item.numero,
                 nombre: item.nombre,
                 points,
+                tieneManto4: hasManto4,
             });
 
-            const shotTmp = await captureTable(points);
+            const shotTmp = await captureTable(points, hasManto4);
             if (!shotTmp) {
                 niceAlert('Error', 'No se pudo generar la imagen.');
                 return;
@@ -323,7 +330,7 @@ export default function ProjectListScreen() {
 
     const renderItem = ({ item }: { item: Row }) => {
         const busy = !!exporting[item.id];
-        const canExport = item.completados >= TOTAL_PUNTOS;
+        const canExport = item.completados >= item.puntos_totales;
 
         return (
             <View style={styles.card}>
@@ -332,7 +339,7 @@ export default function ProjectListScreen() {
                         {item.numero} - {item.nombre}
                     </Text>
                     <Text style={styles.meta}>
-                        Progreso: {item.completados} / {TOTAL_PUNTOS}
+                        Progreso: {item.completados} / {item.puntos_totales}
                     </Text>
 
                     <View style={{ flexDirection: 'row', gap: 6, marginTop: 12 }}>
@@ -431,6 +438,12 @@ export default function ProjectListScreen() {
                     />
                     <Text style={styles.formLabel}>Nombre</Text>
                     <TextInput value={nombre} onChangeText={setNombre} style={styles.input} />
+
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginVertical: 8 }}>
+                        <Text style={styles.formLabel}>Medir Manto 4</Text>
+                        <Switch value={tieneManto4} onValueChange={setTieneManto4} />
+                    </View>
+
                     <View style={{ flexDirection: 'row', gap: 12 }}>
                         <PillButton title="Cancelar" variant="outline" onPress={() => setModalVisible(false)} />
                         <PillButton title="Guardar" onPress={save} />
@@ -438,7 +451,7 @@ export default function ProjectListScreen() {
                 </View>
             </Modal>
 
-            <CaptureModal visible={capVisible} points={capPoints} onDone={onCaptured} />
+            <CaptureModal visible={capVisible} capData={capData} onDone={onCaptured} />
         </SafeAreaView>
     );
 }

@@ -103,12 +103,14 @@ export default function InspectionScreen() {
     const { width } = useWindowDimensions();
 
     const [inspeccionNombre, setInspeccionNombre] = useState<string>('');
+    const [tieneManto4, setTieneManto4] = useState<boolean>(true);
     const [map, setMap] = useState<Record<PointKey, string>>({});
 
     useEffect(() => {
         const load = async () => {
             const insp = await getInspeccion(route.params.inspeccionId);
             setInspeccionNombre(insp ? `${insp.numero} - ${insp.nombre}` : 'No encontrado');
+            setTieneManto4(insp ? insp.tiene_manto_4 === 1 : true);
 
             const puntos = await listPuntosByInspeccion(route.params.inspeccionId);
             const next: Record<string, string> = {};
@@ -135,15 +137,17 @@ export default function InspectionScreen() {
         return out;
     }, [map]);
 
-    const routes = useMemo(
-        () => [
+    const routes = useMemo(() => {
+        const arr = [
             { key: 'm1', title: `Manto 1 ${completedByTabKey['m1'] ? '✓' : '✗'}` },
             { key: 'm2', title: `Manto 2 ${completedByTabKey['m2'] ? '✓' : '✗'}` },
             { key: 'm3', title: `Manto 3 ${completedByTabKey['m3'] ? '✓' : '✗'}` },
-            { key: 'm4', title: `Manto 4 ${completedByTabKey['m4'] ? '✓' : '✗'}` },
-        ],
-        [completedByTabKey],
-    );
+        ];
+        if (tieneManto4) {
+            arr.push({ key: 'm4', title: `Manto 4 ${completedByTabKey['m4'] ? '✓' : '✗'}` });
+        }
+        return arr;
+    }, [completedByTabKey, tieneManto4]);
 
     const [index, setIndex] = useState(0);
 

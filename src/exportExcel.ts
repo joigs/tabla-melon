@@ -1,4 +1,3 @@
-// src/exportExcel.ts
 import * as FileSystem from 'expo-file-system/legacy';
 import * as XLSX from 'xlsx-js-style';
 import { Buffer } from 'buffer';
@@ -38,6 +37,7 @@ export async function writeInspeccionExcel(opts: {
     numero: number;
     nombre: string;
     points: PointsMap;
+    tieneManto4: boolean;
 }) {
     const docDir = FileSystem.documentDirectory || '';
     const baseDir = `${docDir}betonera`;
@@ -49,7 +49,6 @@ export async function writeInspeccionExcel(opts: {
     const filename = `${opts.numero}-${slugify(opts.nombre)}.xlsx`;
     const uri = `${excelDir}/${filename}`;
 
-    // B2..N7
     const row2 = [
         '', '1° Medición', '', '', '',
         '2° Medición', '', '', '',
@@ -64,7 +63,6 @@ export async function writeInspeccionExcel(opts: {
 
     const v = (m: 1 | 2 | 3 | 4, med: 1 | 2 | 3, p: 1 | 2 | 3 | 4) => {
         let val = (opts.points[`${m}-${med}-${p}`] ?? '').trim();
-        // Agregamos ,0 si no hay ninguna coma
         if (val && !val.includes(',')) {
             val += ',0';
         }
@@ -84,24 +82,28 @@ export async function writeInspeccionExcel(opts: {
         mantoRow(1),
         mantoRow(2),
         mantoRow(3),
-        mantoRow(4),
     ];
+
+    if (opts.tieneManto4) {
+        aoa.push(mantoRow(4));
+    }
 
     const ws: XLSX.WorkSheet = {};
     XLSX.utils.sheet_add_aoa(ws, aoa, { origin: 'B2' });
 
     ws['!merges'] = [
-        { s: { r: 1, c: 2 }, e: { r: 1, c: 5 } },   // C2:F2
-        { s: { r: 1, c: 6 }, e: { r: 1, c: 9 } },   // G2:J2
-        { s: { r: 1, c: 10 }, e: { r: 1, c: 13 } }, // K2:N2
+        { s: { r: 1, c: 2 }, e: { r: 1, c: 5 } },
+        { s: { r: 1, c: 6 }, e: { r: 1, c: 9 } },
+        { s: { r: 1, c: 10 }, e: { r: 1, c: 13 } },
     ];
 
     ws['!cols'] = [
-        { wch: 12 }, // B
+        { wch: 12 },
         ...Array.from({ length: 12 }).map(() => ({ wch: 14 })),
     ];
 
-    for (let i = 2; i <= 5; i++) {
+    const maxRow = opts.tieneManto4 ? 5 : 4;
+    for (let i = 2; i <= maxRow; i++) {
         for (let j = 1; j <= 12; j++) {
             const r = 1 + i;
             const c = 1 + j;

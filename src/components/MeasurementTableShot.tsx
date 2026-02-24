@@ -5,7 +5,7 @@ import type { PointsMap } from '../db';
 const GREEN = '#bbf7d0';
 const RED = '#fecaca';
 
-export default function MeasurementTableShot({ points }: { points: PointsMap }) {
+export default function MeasurementTableShot({ points, tieneManto4 }: { points: PointsMap, tieneManto4: boolean }) {
     const getCell = (m: 1 | 2 | 3 | 4, med: 1 | 2 | 3, p: 1 | 2 | 3 | 4) => {
         let val = (points[`${m}-${med}-${p}`] ?? '').trim();
         let bgColor = '#ffffff';
@@ -30,6 +30,8 @@ export default function MeasurementTableShot({ points }: { points: PointsMap }) 
         </View>
     );
 
+    const mantos = tieneManto4 ? [1, 2, 3, 4] : [1, 2, 3];
+
     return (
         <View style={styles.container}>
             <View style={styles.row}>
@@ -42,7 +44,7 @@ export default function MeasurementTableShot({ points }: { points: PointsMap }) 
                 ))}
             </View>
 
-            {[1, 2, 3, 4].map(manto => (
+            {mantos.map(manto => (
                 <View key={`manto-${manto}`} style={styles.row}>
                     <View style={styles.colTitle}>
                         <Text style={styles.mantoTitle}>Manto {manto}</Text>

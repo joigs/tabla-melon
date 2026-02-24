@@ -1,4 +1,3 @@
-// src/db.ts
 import * as SQLite from 'expo-sqlite';
 
 let dbPromise: Promise<SQLite.SQLiteDatabase> | null = null;
@@ -16,7 +15,8 @@ export async function initDb() {
         CREATE TABLE IF NOT EXISTS inspecciones (
                                                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                                                     numero INTEGER NOT NULL UNIQUE,
-                                                    nombre TEXT NOT NULL
+                                                    nombre TEXT NOT NULL,
+                                                    tiene_manto_4 INTEGER NOT NULL DEFAULT 1
         );
 
         CREATE TABLE IF NOT EXISTS puntos (
@@ -33,12 +33,14 @@ export async function initDb() {
 
     await db.execAsync(`ALTER TABLE inspecciones ADD COLUMN export_count INTEGER NOT NULL DEFAULT 0;`).catch(() => {});
     await db.execAsync(`ALTER TABLE inspecciones ADD COLUMN last_image_uri TEXT;`).catch(() => {});
+    await db.execAsync(`ALTER TABLE inspecciones ADD COLUMN tiene_manto_4 INTEGER NOT NULL DEFAULT 1;`).catch(() => {});
 }
 
 export type InspeccionRow = {
     id: number;
     numero: number;
     nombre: string;
+    tiene_manto_4: number;
     export_count?: number;
     last_image_uri?: string | null;
 };
@@ -63,21 +65,25 @@ export async function getInspeccion(id: number): Promise<InspeccionRow | null> {
     return row ?? null;
 }
 
-export async function createInspeccion(numero: number, nombre: string): Promise<number> {
+export async function createInspeccion(numero: number, nombre: string, tieneManto4: number): Promise<number> {
     const db = await getDb();
     const res = await db.runAsync(
-        'INSERT INTO inspecciones (numero, nombre) VALUES (?, ?);',
+        'INSERT INTO inspecciones (numero, nombre, tiene_manto_4) VALUES (?, ?, ?);',
         numero,
-        nombre
+        nombre,
+        tieneManto4
     );
     const id = Number(res.lastInsertRowId);
     await ensure48Puntos(db, id);
     return id;
 }
 
-export async function updateInspeccion(id: number, numero: number, nombre: string) {
+export async function updateInspeccion(id: number, numero: number, nombre: string, tieneManto4: number) {
     const db = await getDb();
-    await db.runAsync('UPDATE inspecciones SET numero = ?, nombre = ? WHERE id = ?;', numero, nombre, id);
+    await db.runAsync(
+        'UPDATE inspecciones SET numero = ?, nombre = ?, tiene_manto_4 = ? WHERE id = ?;',
+        numero, nombre, tieneManto4, id
+    );
 }
 
 export async function deleteInspeccion(id: number) {
@@ -125,9 +131,7 @@ export async function setValorPunto(opts: {
     );
 }
 
-export const TOTAL_PUNTOS = 48;
-
-export type InspeccionConProgreso = InspeccionRow & { completados: number };
+export type InspeccionConProgreso = InspeccionRow & { completados: number; puntos_totales: number; };
 
 export async function listInspeccionesConProgreso(): Promise<InspeccionConProgreso[]> {
     const db = await getDb();
@@ -136,12 +140,14 @@ export async function listInspeccionesConProgreso(): Promise<InspeccionConProgre
             i.id,
             i.numero,
             i.nombre,
+            i.tiene_manto_4,
             COALESCE(i.export_count, 0) AS export_count,
             i.last_image_uri AS last_image_uri,
+            CASE WHEN i.tiene_manto_4 = 1 THEN 48 ELSE 36 END AS puntos_totales,
             COALESCE(
                     SUM(
                             CASE
-                                WHEN TRIM(COALESCE(p.valor_texto, '')) <> '' THEN 1
+                                WHEN TRIM(COALESCE(p.valor_texto, '')) <> '' AND (i.tiene_manto_4 = 1 OR p.manto < 4) THEN 1
                                 ELSE 0
                                 END
                     ),
@@ -149,7 +155,7 @@ export async function listInspeccionesConProgreso(): Promise<InspeccionConProgre
             ) AS completados
         FROM inspecciones i
                  LEFT JOIN puntos p ON p.inspeccion_id = i.id
-        GROUP BY i.id, i.numero, i.nombre, i.export_count, i.last_image_uri
+        GROUP BY i.id, i.numero, i.nombre, i.tiene_manto_4, i.export_count, i.last_image_uri
         ORDER BY i.numero DESC;
     `);
 }
