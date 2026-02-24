@@ -102,7 +102,7 @@ export default function ConfigScreen() {
         <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }} edges={['top', 'bottom']}>
             <View style={{ padding: 20, flex: 1 }}>
                 <Text style={styles.configTitle}>Estructura de Inspección</Text>
-                <Text style={styles.configSub}>Mantén presionado y arrastra para cambiar el orden de la estructura (Pestañas {'>'} Bloques {'>'} Filas).</Text>
+                <Text style={styles.configSub}>Personaliza como se divide la inspección.</Text>
 
                 <DraggableConfigList order={configOrder} onOrderChange={setConfigOrder} />
 
