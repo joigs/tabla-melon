@@ -15,6 +15,9 @@ type Props = {
     onSubmitNext?: () => void;
     onFocus?: () => void;
     isLast?: boolean;
+
+    titleText?: string;
+    metaText?: string;
 };
 
 function normalizeForStore(ui: string): string {
@@ -81,6 +84,8 @@ export default function ItemRow({
                                     onSubmitNext,
                                     onFocus,
                                     isLast = false,
+                                    titleText,
+                                    metaText,
                                 }: Props) {
     const ok = value.trim().length > 0;
 
@@ -124,7 +129,7 @@ export default function ItemRow({
 
             <View style={{ flex: 1 }}>
                 <Text style={styles.title}>
-                    Medición {medicion} · Punto {punto}
+                    {titleText ?? `Medición ${medicion} · Punto ${punto}`}
                 </Text>
 
                 <TextInput
@@ -170,7 +175,9 @@ export default function ItemRow({
                     style={styles.input}
                 />
 
-                <Text style={styles.meta}>Manto {manto}</Text>
+                <Text style={styles.meta}>
+                    {metaText ?? `Manto ${manto}`}
+                </Text>
             </View>
         </View>
     );

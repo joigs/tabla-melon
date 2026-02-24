@@ -25,9 +25,11 @@ import {
     listInspeccionesConProgreso,
     getPointsMapByInspeccion,
     setExportMeta,
+    getConfig,
+    setConfig,
     type PointsMap,
 } from '../db';
-
+import InlineBanner from '../components/InlineBanner';
 import { writeInspeccionExcel } from '../exportExcel';
 import ViewShot from 'react-native-view-shot';
 import MeasurementTableShot from '../components/MeasurementTableShot';
@@ -162,6 +164,7 @@ export default function ProjectListScreen() {
     const [nombre, setNombre] = useState('');
     const [numero, setNumero] = useState<number>(1);
     const [tieneManto4, setTieneManto4] = useState<boolean>(true);
+    const [bannerVisible, setBannerVisible] = useState(false);
 
     const [exporting, setExporting] = useState<Record<number, boolean>>({});
 
@@ -198,6 +201,11 @@ export default function ProjectListScreen() {
     const load = async () => {
         const list = await listInspeccionesConProgreso();
         setRows(list as Row[]);
+
+        const bannerVisto = await getConfig('banner_config_visto', '0');
+        if (bannerVisto !== '1') {
+            setBannerVisible(true);
+        }
     };
 
     useFocusEffect(
@@ -209,6 +217,11 @@ export default function ProjectListScreen() {
     useEffect(() => {
         load().catch(() => {});
     }, []);
+
+    const dismissBanner = async () => {
+        await setConfig('banner_config_visto', '1');
+        setBannerVisible(false);
+    };
 
     const openNew = () => {
         setEditing(null);
@@ -379,6 +392,25 @@ export default function ProjectListScreen() {
     return (
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
             <View style={{ flex: 1 }}>
+
+                <View style={styles.topHeader}>
+                    <Text style={styles.topTitle}>Mis Inspecciones</Text>
+                    <TouchableOpacity onPress={() => { dismissBanner(); nav.navigate('Config' as never); }}>
+                        <Text style={styles.gearIcon}>⚙️</Text>
+                    </TouchableOpacity>
+                </View>
+
+                {bannerVisible && (
+                    <View style={{ marginHorizontal: 12 }}>
+                        <InlineBanner banner={{
+                            message: "Toca la tuerca ⚙️ arriba a la derecha para configurar a tu gusto la estructura de la inspección.",
+                            link_label: "Entendido",
+                            link_url: null
+                        }} />
+                        <TouchableOpacity onPress={dismissBanner} style={styles.bannerBtnOverlay} />
+                    </View>
+                )}
+
                 <View style={styles.searchWrap}>
                     <Text style={styles.searchIcon}>🔎</Text>
                     <TextInput
@@ -457,6 +489,29 @@ export default function ProjectListScreen() {
 }
 
 const styles = StyleSheet.create({
+    topHeader: {
+        flexDirection: 'row',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        paddingHorizontal: 16,
+        paddingTop: 8,
+        paddingBottom: 4,
+    },
+    topTitle: {
+        fontSize: 22,
+        fontWeight: '800',
+    },
+    gearIcon: {
+        fontSize: 24,
+    },
+    bannerBtnOverlay: {
+        position: 'absolute',
+        bottom: 20,
+        left: 12,
+        width: 100,
+        height: 30,
+        zIndex: 10,
+    },
     searchWrap: {
         marginHorizontal: 12,
         marginTop: 12,
@@ -493,7 +548,6 @@ const styles = StyleSheet.create({
         color: '#667085',
         fontSize: 12,
     },
-
     card: {
         flexDirection: 'row',
         padding: 12,

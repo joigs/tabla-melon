@@ -29,6 +29,11 @@ export async function initDb() {
                                               UNIQUE(inspeccion_id, manto, medicion, punto),
             FOREIGN KEY(inspeccion_id) REFERENCES inspecciones(id) ON DELETE CASCADE
             );
+
+        CREATE TABLE IF NOT EXISTS configuracion (
+                                                     clave TEXT PRIMARY KEY,
+                                                     valor TEXT NOT NULL
+        );
     `);
 
     await db.execAsync(`ALTER TABLE inspecciones ADD COLUMN export_count INTEGER NOT NULL DEFAULT 0;`).catch(() => {});
@@ -53,6 +58,20 @@ export type PuntoRow = {
     punto: number;
     valor_texto: string | null;
 };
+
+export async function getConfig(clave: string, defaultValue: string): Promise<string> {
+    const db = await getDb();
+    const row = await db.getFirstAsync<{valor: string}>('SELECT valor FROM configuracion WHERE clave = ? LIMIT 1;', clave);
+    return row ? row.valor : defaultValue;
+}
+
+export async function setConfig(clave: string, valor: string) {
+    const db = await getDb();
+    await db.runAsync(
+        'INSERT INTO configuracion (clave, valor) VALUES (?, ?) ON CONFLICT(clave) DO UPDATE SET valor = ?;',
+        clave, valor, valor
+    );
+}
 
 export async function listInspecciones(): Promise<InspeccionRow[]> {
     const db = await getDb();
