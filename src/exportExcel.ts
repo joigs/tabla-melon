@@ -56,9 +56,9 @@ export async function writeInspeccionExcel(opts: {
     ];
     const row3 = [
         'Medición',
-        '1° punto', '2° punto', '3° punto', '4° punto',
-        '1° punto', '2° punto', '3° punto', '4° punto',
-        '1° punto', '2° punto', '3° punto', '4° punto',
+        'P1', 'P2', 'P3', 'P4',
+        'P1', 'P2', 'P3', 'P4',
+        'P1', 'P2', 'P3', 'P4',
     ];
 
     const v = (m: 1 | 2 | 3 | 4, med: 1 | 2 | 3, p: 1 | 2 | 3 | 4) => {
@@ -98,11 +98,21 @@ export async function writeInspeccionExcel(opts: {
     ];
 
     ws['!cols'] = [
-        { wch: 12 },
-        ...Array.from({ length: 12 }).map(() => ({ wch: 14 })),
+        { wch: 8 },
+        ...Array.from({ length: 12 }).map(() => ({ wch: 4.5 })),
     ];
 
     const maxRow = opts.tieneManto4 ? 5 : 4;
+
+    ws['!rows'] = [
+        { hpt: 20 },
+        { hpt: 25 },
+        { hpt: 25 },
+    ];
+    for (let i = 2; i <= maxRow; i++) {
+        ws['!rows'].push({ hpt: 55 });
+    }
+
     for (let i = 2; i <= maxRow; i++) {
         for (let j = 1; j <= 12; j++) {
             const r = 1 + i;

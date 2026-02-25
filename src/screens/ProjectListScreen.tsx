@@ -393,17 +393,10 @@ export default function ProjectListScreen() {
         <SafeAreaView style={{ flex: 1 }} edges={['top', 'bottom']}>
             <View style={{ flex: 1 }}>
 
-                <View style={styles.topHeader}>
-                    <Text style={styles.topTitle}>Mis Inspecciones</Text>
-                    <TouchableOpacity onPress={() => { dismissBanner(); nav.navigate('Config' as never); }}>
-                        <Text style={styles.gearIcon}>⚙️</Text>
-                    </TouchableOpacity>
-                </View>
-
                 {bannerVisible && (
-                    <View style={{ marginHorizontal: 12 }}>
+                    <View style={{ marginHorizontal: 12, marginTop: 12 }}>
                         <InlineBanner banner={{
-                            message: "Toca la tuerca ⚙️ arriba a la derecha para configurar a tu gusto la estructura de la inspección.",
+                            message: "Presiona la tuerca ⚙️ para configurar la estructura de la inspección.",
                             link_label: "Entendido",
                             link_url: null
                         }} />
@@ -489,21 +482,6 @@ export default function ProjectListScreen() {
 }
 
 const styles = StyleSheet.create({
-    topHeader: {
-        flexDirection: 'row',
-        justifyContent: 'space-between',
-        alignItems: 'center',
-        paddingHorizontal: 16,
-        paddingTop: 8,
-        paddingBottom: 4,
-    },
-    topTitle: {
-        fontSize: 22,
-        fontWeight: '800',
-    },
-    gearIcon: {
-        fontSize: 24,
-    },
     bannerBtnOverlay: {
         position: 'absolute',
         bottom: 20,
@@ -548,6 +526,7 @@ const styles = StyleSheet.create({
         color: '#667085',
         fontSize: 12,
     },
+
     card: {
         flexDirection: 'row',
         padding: 12,

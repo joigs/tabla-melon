@@ -1,60 +1,37 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, PanResponder, Animated } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import PillButton from '../components/PillButton';
 import { getConfig, setConfig } from '../db';
 
-function DraggableConfigList({ order, onOrderChange }: { order: string[], onOrderChange: (newOrder: string[]) => void }) {
-    const [items, setItems] = useState(order);
-    const itemHeight = 60;
-    const positions = useRef(items.map((_, i) => new Animated.Value(i * itemHeight))).current;
+export default function ConfigScreen() {
+    const nav = useNavigation();
+    const [configOrder, setConfigOrder] = useState<string[]>(['mediciones', 'mantos', 'puntos']);
 
     useEffect(() => {
-        setItems(order);
-    }, [order]);
+        getConfig('estructura_inspeccion', 'mediciones,mantos,puntos').then(savedOrder => {
+            setConfigOrder(savedOrder.split(','));
+        });
+    }, []);
 
-    const panResponders = useRef(
-        items.map((_, index) =>
-            PanResponder.create({
-                onStartShouldSetPanResponder: () => true,
-                onPanResponderMove: (_, gestureState) => {
-                    const newY = index * itemHeight + gestureState.dy;
-                    positions[index].setValue(newY);
+    const saveConfigOrder = async () => {
+        await setConfig('estructura_inspeccion', configOrder.join(','));
+        nav.goBack();
+    };
 
-                    const currentPos = Math.round(newY / itemHeight);
-                    if (currentPos !== index && currentPos >= 0 && currentPos < items.length) {
-                        const newItems = [...items];
-                        const temp = newItems[index];
-                        newItems[index] = newItems[currentPos];
-                        newItems[currentPos] = temp;
+    const moveUp = (index: number) => {
+        if (index === 0) return;
+        const newOrder = [...configOrder];
+        [newOrder[index - 1], newOrder[index]] = [newOrder[index], newOrder[index - 1]];
+        setConfigOrder(newOrder);
+    };
 
-                        Animated.spring(positions[currentPos], {
-                            toValue: index * itemHeight,
-                            useNativeDriver: false,
-                        }).start();
-
-                        setItems(newItems);
-                        onOrderChange(newItems);
-
-                        const tempResponder = panResponders[index];
-                        panResponders[index] = panResponders[currentPos];
-                        panResponders[currentPos] = tempResponder;
-
-                        const tempPos = positions[index];
-                        positions[index] = positions[currentPos];
-                        positions[currentPos] = tempPos;
-                    }
-                },
-                onPanResponderRelease: () => {
-                    Animated.spring(positions[index], {
-                        toValue: index * itemHeight,
-                        useNativeDriver: false,
-                    }).start();
-                }
-            })
-        )
-    ).current;
+    const moveDown = (index: number) => {
+        if (index === configOrder.length - 1) return;
+        const newOrder = [...configOrder];
+        [newOrder[index + 1], newOrder[index]] = [newOrder[index], newOrder[index + 1]];
+        setConfigOrder(newOrder);
+    };
 
     const names: Record<string, string> = {
         mediciones: 'Mediciones',
@@ -63,91 +40,106 @@ function DraggableConfigList({ order, onOrderChange }: { order: string[], onOrde
     };
 
     return (
-        <View style={{ height: items.length * itemHeight, position: 'relative', marginTop: 10 }}>
-            {items.map((item, index) => (
-                <Animated.View
-                    key={item}
-                    {...panResponders[index].panHandlers}
-                    style={[
-                        styles.dragItem,
-                        { top: positions[index] }
-                    ]}
-                >
-                    <Text style={styles.dragText}>{names[item]}</Text>
-                    <Text style={styles.dragIcon}>↕️</Text>
-                </Animated.View>
-            ))}
+        <View style={styles.container}>
+            <Text style={styles.title}>Estructura de Inspección</Text>
+            <Text style={styles.sub}>
+                Usa las flechas para cambiar el como se divide la inspección (Pestañas {'->'} Bloques {'->'} Filas).
+            </Text>
+
+            <View style={styles.list}>
+                {configOrder.map((item, index) => (
+                    <View key={item} style={styles.itemBox}>
+                        <Text style={styles.itemText}>{names[item]}</Text>
+                        <View style={styles.arrowGroup}>
+                            {index > 0 ? (
+                                <TouchableOpacity onPress={() => moveUp(index)} style={styles.btn}>
+                                    <Text style={styles.icon}>⬆️</Text>
+                                </TouchableOpacity>
+                            ) : (
+                                <View style={styles.placeholder} />
+                            )}
+
+                            {index < configOrder.length - 1 ? (
+                                <TouchableOpacity onPress={() => moveDown(index)} style={styles.btn}>
+                                    <Text style={styles.icon}>⬇️</Text>
+                                </TouchableOpacity>
+                            ) : (
+                                <View style={styles.placeholder} />
+                            )}
+                        </View>
+                    </View>
+                ))}
+            </View>
+
+            <View style={styles.footer}>
+                <PillButton title="Cancelar" variant="outline" onPress={() => nav.goBack()} />
+                <PillButton title="Guardar orden" onPress={saveConfigOrder} />
+            </View>
         </View>
     );
 }
 
-export default function ConfigScreen() {
-    const nav = useNavigation();
-    const [configOrder, setConfigOrder] = useState<string[]>(['mediciones', 'mantos', 'puntos']);
-
-    useEffect(() => {
-        const load = async () => {
-            const savedOrder = await getConfig('estructura_inspeccion', 'mediciones,mantos,puntos');
-            setConfigOrder(savedOrder.split(','));
-        };
-        load().catch(() => {});
-    }, []);
-
-    const saveConfigOrder = async () => {
-        await setConfig('estructura_inspeccion', configOrder.join(','));
-        nav.goBack();
-    };
-
-    return (
-        <SafeAreaView style={{ flex: 1, backgroundColor: '#f8f9fa' }} edges={['top', 'bottom']}>
-            <View style={{ padding: 20, flex: 1 }}>
-                <Text style={styles.configTitle}>Estructura de Inspección</Text>
-                <Text style={styles.configSub}>Personaliza como se divide la inspección.</Text>
-
-                <DraggableConfigList order={configOrder} onOrderChange={setConfigOrder} />
-
-                <View style={{ flexDirection: 'row', gap: 12, marginTop: 'auto', marginBottom: 20 }}>
-                    <PillButton title="Cancelar" variant="outline" onPress={() => nav.goBack()} />
-                    <PillButton title="Guardar orden" onPress={saveConfigOrder} />
-                </View>
-            </View>
-        </SafeAreaView>
-    );
-}
-
 const styles = StyleSheet.create({
-    configTitle: {
+    container: {
+        padding: 20,
+        flex: 1,
+        backgroundColor: '#fff'
+    },
+    title: {
         fontSize: 20,
         fontWeight: 'bold',
         marginBottom: 8,
-        marginTop: 10,
+        marginTop: 10
     },
-    configSub: {
+    sub: {
         fontSize: 14,
         color: '#666',
-        marginBottom: 20,
+        marginBottom: 32
     },
-    dragItem: {
-        position: 'absolute',
-        width: '100%',
-        height: 50,
-        backgroundColor: '#fff',
+    list: {
+        flex: 1,
+        gap: 16
+    },
+    itemBox: {
+        height: 80,
+        backgroundColor: '#f8f9fa',
         borderWidth: 1,
         borderColor: '#ddd',
-        borderRadius: 8,
+        borderRadius: 12,
         flexDirection: 'row',
         justifyContent: 'space-between',
         alignItems: 'center',
-        paddingHorizontal: 16,
-        zIndex: 1,
+        paddingHorizontal: 20
     },
-    dragText: {
-        fontSize: 16,
-        fontWeight: '600',
-        textTransform: 'capitalize'
+    itemText: {
+        fontSize: 18,
+        fontWeight: '600'
     },
-    dragIcon: {
-        fontSize: 20,
-        color: '#999'
+    arrowGroup: {
+        flexDirection: 'row',
+        gap: 16
+    },
+    btn: {
+        width: 54,
+        height: 54,
+        backgroundColor: '#e9ecef',
+        borderRadius: 10,
+        borderWidth: 1,
+        borderColor: '#ced4da',
+        justifyContent: 'center',
+        alignItems: 'center'
+    },
+    placeholder: {
+        width: 54,
+        height: 54
+    },
+    icon: {
+        fontSize: 24
+    },
+    footer: {
+        flexDirection: 'row',
+        gap: 12,
+        marginTop: 'auto',
+        marginBottom: 20
     }
 });
